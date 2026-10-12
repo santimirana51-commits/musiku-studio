@@ -1,0 +1,14 @@
+/home/miran/projec/musiku/src-tauri/target/debug/deps/uuid-2e59437e582200c8.d: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/macros.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/builder.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/error.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/non_nil.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/parser.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/fmt.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/timestamp.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/external.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/external/serde_support.rs
+
+/home/miran/projec/musiku/src-tauri/target/debug/deps/libuuid-2e59437e582200c8.rmeta: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/macros.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/builder.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/error.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/non_nil.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/parser.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/fmt.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/timestamp.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/external.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/external/serde_support.rs
+
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/lib.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/macros.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/builder.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/error.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/non_nil.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/parser.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/fmt.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/timestamp.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/external.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uuid-1.28.0/src/external/serde_support.rs:

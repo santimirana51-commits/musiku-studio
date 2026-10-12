@@ -1,0 +1,12 @@
+/home/miran/projec/musiku/src-tauri/target/debug/deps/cookie-f1467a52d439ca63.d: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/builder.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/parse.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/jar.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/delta.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/same_site.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/expiration.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/prefix.rs
+
+/home/miran/projec/musiku/src-tauri/target/debug/deps/libcookie-f1467a52d439ca63.rmeta: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/builder.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/parse.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/jar.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/delta.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/same_site.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/expiration.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/prefix.rs
+
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/lib.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/builder.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/parse.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/jar.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/delta.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/same_site.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/expiration.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cookie-0.18.2/src/prefix.rs:

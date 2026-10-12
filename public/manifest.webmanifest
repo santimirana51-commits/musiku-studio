@@ -1,0 +1,19 @@
+{
+  "name": "MusikKu — Platform Musik & Karaoke Multi-Platform",
+  "short_name": "MusikKu",
+  "description": "Ekosistem pemutaran musik lokal, cloud, karaoke, dan YouTube",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

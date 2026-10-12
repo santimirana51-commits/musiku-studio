@@ -1,0 +1,10 @@
+/home/miran/projec/musiku/src-tauri/target/debug/deps/tauri_runtime-5737215383fe7699.d: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/dpi.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/monitor.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/webview.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/webview_permissions.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/window.rs
+
+/home/miran/projec/musiku/src-tauri/target/debug/deps/libtauri_runtime-5737215383fe7699.rmeta: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/dpi.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/monitor.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/webview.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/webview_permissions.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/window.rs
+
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/lib.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/dpi.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/monitor.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/webview.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/webview_permissions.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-runtime-2.12.1/src/window.rs:

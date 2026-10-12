@@ -1,0 +1,12 @@
+/home/miran/projec/musiku/src-tauri/target/debug/deps/tinystr-b18a05a61c67a679.d: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/macros.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/ascii.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/asciibyte.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/error.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/int_ops.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/unvalidated.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/ule.rs
+
+/home/miran/projec/musiku/src-tauri/target/debug/deps/libtinystr-b18a05a61c67a679.rmeta: /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/lib.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/macros.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/ascii.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/asciibyte.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/error.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/int_ops.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/unvalidated.rs /home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/ule.rs
+
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/lib.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/macros.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/ascii.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/asciibyte.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/error.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/int_ops.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/unvalidated.rs:
+/home/miran/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tinystr-0.8.4/src/ule.rs:
