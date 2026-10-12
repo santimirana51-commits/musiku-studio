@@ -2226,7 +2226,7 @@ export default function StudioPage() {
             </span>
             <span>
               <strong>Pemulihan Darurat (Disaster Recovery):</strong> Ditemukan snapshot autosave untuk proyek{" "}
-              <span className="font-bold text-white">"{autosaveRecovery.project.name}"</span> ({autosaveRecovery.project.tracks.length} track, tersimpan pukul {new Date(autosaveRecovery.savedAt).toLocaleTimeString("id-ID")}). Ingin memulihkan aransemen terakhir? (Mixcraft 10 Hlm. 686)
+              <span className="font-bold text-white">&quot;{autosaveRecovery.project.name}&quot;</span> ({autosaveRecovery.project.tracks.length} track, tersimpan pukul {new Date(autosaveRecovery.savedAt).toLocaleTimeString("id-ID")}). Ingin memulihkan aransemen terakhir? (Mixcraft 10 Hlm. 686)
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-4">

@@ -2216,7 +2216,7 @@ export function TrackHeader({
                   </button>
                 )}
                 <div className="px-2 pt-1 text-[9px] text-zinc-500 italic border-t border-white/5 mt-1">
-                  "Unlike Fleetwood Mac, you can always break the chain..."
+                  &quot;Unlike Fleetwood Mac, you can always break the chain...&quot;
                 </div>
               </div>
             )}

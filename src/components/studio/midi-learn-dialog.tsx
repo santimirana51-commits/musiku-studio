@@ -238,7 +238,7 @@ export function MidiLearnDialog({
                 {filteredMappings.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-8 text-zinc-500">
-                      Tidak ada pemetaan pada kategori ini. Klik "Tambah Perintah" untuk memetakan fungsi baru.
+                      Tidak ada pemetaan pada kategori ini. Klik &quot;Tambah Perintah&quot; untuk memetakan fungsi baru.
                     </td>
                   </tr>
                 ) : (

@@ -210,7 +210,7 @@ export function MarkerListDialog({
                 {sortedMarkers.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center py-8 text-zinc-500">
-                      Belum ada marker pada proyek ini. Klik "+ Marker di Playhead" untuk menambahkan.
+                      Belum ada marker pada proyek ini. Klik &quot;+ Marker di Playhead&quot; untuk menambahkan.
                     </td>
                   </tr>
                 ) : (

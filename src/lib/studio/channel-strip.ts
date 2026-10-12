@@ -157,7 +157,7 @@ export function createChannelStripNodes(
   const driveWet = ctx.createGain();
   const waveShaper = ctx.createWaveShaper();
   waveShaper.oversample = "4x";
-  waveShaper.curve = createDriveCurve(current.driveAmount);
+  waveShaper.curve = createDriveCurve(current.driveAmount) as any;
 
   driveIn.connect(driveDry);
   driveDry.connect(driveOut);
@@ -166,7 +166,7 @@ export function createChannelStripNodes(
   driveWet.connect(driveOut);
 
   const syncDriveNodes = (enabled: boolean, amount: number) => {
-    waveShaper.curve = createDriveCurve(amount);
+    waveShaper.curve = createDriveCurve(amount) as any;
     if (!enabled || amount <= 0) {
       driveDry.gain.value = 1.0;
       driveWet.gain.value = 0.0;

@@ -4,3 +4,5 @@ node_modules
 .next
 out
 coverage
+tsconfig.tsbuildinfo
+src-tauri/target/debug/incremental/

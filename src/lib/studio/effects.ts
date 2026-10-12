@@ -350,7 +350,7 @@ export function buildEffectChain(
     } else if (plug.pluginId === "internal.distortion") {
       const shaper = ctx.createWaveShaper();
       const drive = plug.parameters.drive ?? 30;
-      shaper.curve = createDistortionCurve(drive);
+      shaper.curve = createDistortionCurve(drive) as any;
       shaper.oversample = "4x";
 
       const wet = ctx.createGain();
@@ -371,7 +371,7 @@ export function buildEffectChain(
       activeGain.connect(instanceOut);
 
       paramMap.drive = (val: number) => {
-        shaper.curve = createDistortionCurve(val);
+        shaper.curve = createDistortionCurve(val) as any;
       };
       paramMap.mix = (val: number) => {
         wet.gain.value = Math.max(0, Math.min(1, val));

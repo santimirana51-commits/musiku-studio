@@ -263,7 +263,7 @@ export function ProjectDialog({
                   Berkas Audio Hilang (Missing Sound Files)
                 </h3>
                 <p className="text-xs text-amber-300/80 leading-relaxed">
-                  Proyek <strong className="text-white">"{missingAssetsState.project.name}"</strong> memerlukan berkas audio yang tidak ditemukan di penyimpanan lokal perangkat ini. Silakan cari dan relink berkas pengganti dari hard drive Anda, atau buka proyek dengan trek yang hilang dibisukan. (Mixcraft 10 Hlm. 52)
+                  Proyek <strong className="text-white">&quot;{missingAssetsState.project.name}&quot;</strong> memerlukan berkas audio yang tidak ditemukan di penyimpanan lokal perangkat ini. Silakan cari dan relink berkas pengganti dari hard drive Anda, atau buka proyek dengan trek yang hilang dibisukan. (Mixcraft 10 Hlm. 52)
                 </p>
               </div>
             </div>
