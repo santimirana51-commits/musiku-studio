@@ -11,9 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:extension": "bash extension/scripts/build.sh",
     "android:sync": "npx cap sync android",
-    "build:all": "npm run build && npm run build:extension && npx cap sync android"
+    "build:all": "npm run build && npx cap sync android"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

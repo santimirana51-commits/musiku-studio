@@ -12,7 +12,7 @@ MusikKu adalah ekosistem platform musik komprehensif yang mengombinasikan dua pi
 1. **Platform Penemuan & Streaming Musik** berbasis YouTube Data API v3 resmi dan YouTube IFrame Player API terintegrasi, dilengkapi dengan pemutar Karaoke LRC, asisten AI Lyrics, Studio Equalizer 10-Band, dan Pustaka Audio lokal/cloud.
 2. **MusikKu Studio DAW** — Digital Audio Workstation multitrack profesional berbasis web dan desktop yang mengadopsi fungsionalitas dan alur kerja Acoustica Mixcraft 10 (8 tipe track, timeline aransemen, 9-tahap routing graf audio Web Audio API, instrumen virtual PolySynth & Procedural Drum Synth, Piano Roll, Step Sequencer, Video window, Performance Panel, Stem Separation AI/DSP, hingga ekspor WAV 16/24-bit lossless).
 
-Seluruh sistem dirancang multi-platform (Web/PWA, Android Capacitor, Windows Desktop Tauri 2 Rust, dan Chrome WebExtension MV3).
+Seluruh sistem dirancang multi-platform (Web/PWA, Android Capacitor, dan Windows Desktop Tauri 2 Rust).
 
 ---
 
@@ -22,14 +22,13 @@ Setiap komponen dalam repositori telah diverifikasi secara langsung melalui tool
 
 | Indikator Kualitas | Perintah Verifikasi | Status | Catatan / Hasil Aktual |
 | :--- | :--- | :---: | :--- |
-| **Unit & Integration Test** | `npm test` (`vitest run`) | ✅ **100% LULUS** | **47 berkas tes, 350 tes lulus** (0 failed) |
+| **Unit & Integration Test** | `npm test` (`vitest run`) | ✅ **100% LULUS** | **42 berkas tes, 330 tes lulus** (0 failed) |
 | **Pengecekan Tipe (Typecheck)** | `npm run typecheck` (`tsc --noEmit`) | ✅ **BERSIH** | **0 Errors** (Strict mode TypeScript 5.6.2 aktif) |
 | **Linting Kode (ESLint)** | `npm run lint` (`next lint`) | ✅ **BERSIH** | **0 Errors** (Lolos aturan Next.js & React hooks) |
-| **Build Produksi Web** | `npm run build` (`next build`) | ✅ **BERHASIL** | **32/32 rute** terkompilasi & prerendered (SSG + SSR) |
+| **Build Produksi Web** | `npm run build` (`next build`) | ✅ **BERHASIL** | **31/31 rute** terkompilasi & prerendered (SSG + SSR) |
 | **Deployment Vercel (Production)** | Git Push CI/CD | ✅ **READY / LIVE** | Live di [musiku-studio-zj5b.vercel.app](https://musiku-studio-zj5b.vercel.app/) |
 | **Backend Desktop (Rust)** | `cargo check` (`src-tauri`) | ✅ **BERHASIL** | Profil `dev` terkompilasi bersih tanpa error Rust |
 | **Sinkronisasi Android** | `npx cap sync android` | ✅ **BERHASIL** | Aset web & plugin tersinkronisasi ke folder native Android |
-| **Browser Extension** | `npm run build:extension` | ✅ **BERHASIL** | Bundle MV3 (`dist/`) terkompilasi lengkap |
 
 ---
 
@@ -89,13 +88,12 @@ Setiap komponen dalam repositori telah diverifikasi secara langsung melalui tool
 * **Web / PWA:** `manifest.webmanifest`, service worker offline page, Media Session API untuk kontrol audio background.
 * **Android (Capacitor 8):** Paket `com.musikku.app` dengan integrasi Foreground Service `PlaybackService.java` untuk pemutaran audio di latar belakang.
 * **Windows Desktop (Tauri 2 Rust):** Modul `src-tauri/` menyediakan backend Rust untuk pemindaian VST3 di sistem Windows (`%CommonProgramFiles%/VST3`), WASAPI Exclusive mode bridge, dan tray window.
-* **Browser Extension (Manifest V3):** Direktori `extension/` untuk integrasi arbitrase media peramban dan sinkronisasi audio eksternal.
 
 ---
 
-## 4. Rincian Suite Pengujian Otomatis (350 Tests)
+## 4. Rincian Suite Pengujian Otomatis (330 Tests)
 
-Repositori memiliki cakupan tes unit dan integrasi yang sangat menyeluruh (47 berkas tes di Vitest):
+Repositori memiliki cakupan tes unit dan integrasi yang sangat menyeluruh (42 berkas tes di Vitest):
 
 1. **Studio Core & Track Management:**
    - `src/lib/studio/tracks-and-types.test.ts` (47 tes)
@@ -134,7 +132,7 @@ Repositori memiliki cakupan tes unit dan integrasi yang sangat menyeluruh (47 be
    - `src/lib/local-library/decode-probe.test.ts` (4 tes)
    - `src/lib/local-library/db.test.ts` (3 tes)
    - `src/lib/local-player/engine.test.ts` (5 tes)
-6. **Sync, API & Browser Extension:**
+6. **Sync & API:**
    - `src/lib/sync/retry.test.ts` (5 tes)
    - `src/lib/sync/conflict.test.ts` (4 tes)
    - `src/lib/sync/engine.test.ts` (4 tes)
@@ -145,11 +143,6 @@ Repositori memiliki cakupan tes unit dan integrasi yang sangat menyeluruh (47 be
    - `src/app/api/search/route.test.ts` (4 tes)
    - `src/app/api/sync/route.test.ts` (3 tes)
    - `src/app/api/ai-lyrics/route.test.ts` (3 tes)
-   - `extension/src/background/musiku-sync.test.ts` (5 tes)
-   - `extension/src/background/registry.test.ts` (4 tes)
-   - `extension/src/offscreen/store.test.ts` (1 tes)
-   - `extension/src/shared/arbitration.test.ts` (6 tes)
-   - `extension/src/shared/capture.test.ts` (4 tes)
 
 ---
 
@@ -196,7 +189,4 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 # Menyinkronkan aset web ke platform Android
 npx cap sync android
-
-# Membangun bundle ekstensi peramban
-npm run build:extension
 ```

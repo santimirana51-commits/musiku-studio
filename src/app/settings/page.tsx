@@ -1,8 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Puzzle, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { supabaseConfigured } from "@/lib/env-client";
 import { useToast } from "@/components/toast";
@@ -95,27 +93,6 @@ export default function SettingsPage() {
           {syncStatus === "error" && (
             <span className="text-[10px] text-red-400">Error: {error ?? "unknown"}</span>
           )}
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-white/10 bg-card p-6" aria-label="Ekstensi Browser">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="flex items-center gap-2 font-bold text-white">
-              <Puzzle className="size-4 text-violet-400" />
-              <span>Ekstensi Browser MusikKu (Chrome MV3)</span>
-            </h2>
-            <p className="text-xs text-zinc-400">
-              Kontrol pemutaran dari tab mana pun, putar audio lokal mandiri di background dengan 10-Band EQ, dan pantau pustaka cloud.
-            </p>
-          </div>
-          <Link
-            href="/extension"
-            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-violet-600/20 px-3 py-1.5 text-xs font-semibold text-violet-300 hover:bg-violet-600/30 hover:text-white transition"
-          >
-            <span>Pusat Ekstensi</span>
-            <ArrowRight className="size-3.5" />
-          </Link>
         </div>
       </section>
 

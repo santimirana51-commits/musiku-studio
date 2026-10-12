@@ -24,7 +24,6 @@ Platform penemuan dan streaming musik berbasis **YouTube** dengan desain premium
   - **Android (Capacitor):** Foreground playback service `PlaybackService.java` + MediaSession & audio focus. Lihat `docs/android-build.md`.
   - **Windows (Tauri 2):** Arsitektur desktop spike terkonfigurasi di `src-tauri/`. Lihat `docs/windows-build.md`.
 - Studio DAW `/studio`: Digital Audio Workstation multitrack lengkap terintegrasi: arrangement timeline, beat ruler, snap, track headers (mute/solo/arm), audio & MIDI clips, piano roll editor, console mixer dengan inserts & sends, polyphonic synthesizer internal, rak efek (EQ, compressor, limiter, reverb, delay), perekaman vokal multitrack live, ekspor master WAV offline, dan bridge host VST3 desktop Windows. Lihat `docs/studio-architecture.md` & `docs/audio-engine.md`.
-- Ekstensi Chrome `extension/` (MV3): kontrol universal player lokal + tab media dengan kapabilitas jujur. Lihat `extension/README.md`, build via `npm run build:extension`.
 - Keamanan: secret hanya di server, validasi Zod, rate limit, RLS, security headers, Idempotency-Key.
 
 ## Prasyarat
