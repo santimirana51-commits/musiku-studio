@@ -26,7 +26,7 @@ Setiap komponen dalam repositori telah diverifikasi secara langsung melalui tool
 | **Pengecekan Tipe (Typecheck)** | `npm run typecheck` (`tsc --noEmit`) | ✅ **BERSIH** | **0 Errors** (Strict mode TypeScript 5.6.2 aktif) |
 | **Linting Kode (ESLint)** | `npm run lint` (`next lint`) | ✅ **BERSIH** | **0 Errors** (Lolos aturan Next.js & React hooks) |
 | **Build Produksi Web** | `npm run build` (`next build`) | ✅ **BERHASIL** | **32/32 rute** terkompilasi & prerendered (SSG + SSR) |
-| **Deployment Vercel (Production)** | Git Push CI/CD | ✅ **READY** | Live di [santimirana51-commits-musiku-studio-murex.vercel.app](https://santimirana51-commits-musiku-studio-murex.vercel.app/) |
+| **Deployment Vercel (Production)** | Git Push CI/CD | ✅ **READY / LIVE** | Live di [musiku-studio-zj5b.vercel.app](https://musiku-studio-zj5b.vercel.app/) |
 | **Backend Desktop (Rust)** | `cargo check` (`src-tauri`) | ✅ **BERHASIL** | Profil `dev` terkompilasi bersih tanpa error Rust |
 | **Sinkronisasi Android** | `npx cap sync android` | ✅ **BERHASIL** | Aset web & plugin tersinkronisasi ke folder native Android |
 | **Browser Extension** | `npm run build:extension` | ✅ **BERHASIL** | Bundle MV3 (`dist/`) terkompilasi lengkap |
