@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Puzzle, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { supabaseConfigured } from "@/lib/env-client";
 import { useToast } from "@/components/toast";
 import { useSyncEngine } from "@/lib/sync/use-sync";
 import { clearSyncQueue } from "@/lib/sync/queue";
@@ -18,6 +19,10 @@ export default function SettingsPage() {
   const { status: syncStatus, queueCount, syncManual, pauseSync, resetError, error } = useSyncEngine();
 
   useEffect(() => {
+    if (!supabaseConfigured()) {
+      setLoading(false);
+      return;
+    }
     (async () => {
       const supabase = createClient();
       const { data } = await supabase.auth.getUser();

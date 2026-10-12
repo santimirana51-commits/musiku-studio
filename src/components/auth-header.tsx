@@ -4,11 +4,13 @@ import Link from "next/link";
 import { LogOut, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { supabaseConfigured } from "@/lib/env-client";
 
 export function AuthHeader() {
   const [email, setEmail] = useState<string | null>(null);
   const router = useRouter();
   useEffect(() => {
+    if (!supabaseConfigured()) return;
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
@@ -16,7 +18,7 @@ export function AuthHeader() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  if (!supabaseConfigured()) {
     return <span className="rounded-full bg-white/5 px-3 py-1.5 text-xs text-zinc-400">Mode tamu</span>;
   }
   if (!email) {

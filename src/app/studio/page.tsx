@@ -1880,6 +1880,7 @@ export default function StudioPage() {
     selectedTrackId,
     selectedTrackIds,
     selectedClipId,
+    selectedClipIds,
     project.tracks,
     handleDuplicateClip,
     handleDeleteClip,

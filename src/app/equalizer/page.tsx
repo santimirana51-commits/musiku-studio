@@ -171,8 +171,8 @@ export default function EqualizerPage() {
                     step={1}
                     value={gain}
                     onChange={(e) => handleBandChange(idx, Number(e.target.value))}
-                    aria-label={`Gain untuk ${band.label}`}
-                    className="h-40 w-2 cursor-pointer appearance-none rounded-full bg-charcoal accent-violet-500 [writing-mode:bt-lr] [-webkit-appearance:slider-vertical]"
+                    style={{ writingMode: "vertical-lr", direction: "rtl" }}
+                    className="h-40 w-2 cursor-pointer rounded-full bg-charcoal accent-violet-500"
                   />
                 </div>
 
