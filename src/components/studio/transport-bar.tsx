@@ -30,8 +30,9 @@ import {
   Activity,
   Layers,
   Radio,
+  Tv,
 } from "lucide-react";
-import type { AudioDeviceOption, TransportState, TrackType, AudioDriverType } from "@/lib/studio/types";
+import type { AudioDeviceOption, TransportState, TrackType, AudioDriverType, LiveTabAudioState } from "@/lib/studio/types";
 
 interface TransportBarProps {
   projectName: string;
@@ -41,6 +42,10 @@ interface TransportBarProps {
   inputLevel: number;
   inputDevices: AudioDeviceOption[];
   selectedDeviceId?: string;
+  liveTabState?: LiveTabAudioState;
+  liveTabLevel?: number;
+  onToggleLiveTab?: () => void;
+  onConnectLiveTab?: () => void;
   canUndo: boolean;
   canRedo: boolean;
   onPlay: () => void;
@@ -131,6 +136,10 @@ export function TransportBar({
   onOpenMidiLearnDialog,
   onToggleCountIn,
   hasCountIn,
+  liveTabState,
+  liveTabLevel = 0,
+  onToggleLiveTab,
+  onConnectLiveTab,
   onUndo,
   onRedo,
 }: TransportBarProps) {
@@ -735,6 +744,55 @@ export function TransportBar({
           >
             <Grid3X3 className="size-3.5" />
             <span className="hidden sm:inline">Beat Machine</span>
+          </button>
+        )}
+
+        {/* Virtual Cable / YouTube Live Tab In Quick Button */}
+        {(onToggleLiveTab || onConnectLiveTab) && (
+          <button
+            onClick={() => {
+              if (liveTabState?.isConnected) {
+                onToggleLiveTab?.();
+              } else {
+                onConnectLiveTab?.();
+              }
+            }}
+            title={
+              liveTabState?.isConnected
+                ? liveTabState.isEnabled
+                  ? "YouTube Tab Audio: AKTIF (Power ON). Klik untuk matikan."
+                  : "YouTube Tab Audio: MATI (Power OFF). Klik untuk nyalakan."
+                : "Hubungkan Audio Tab YouTube (Virtual Cable via Browser). Klik untuk memilih tab."
+            }
+            className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition ${
+              liveTabState?.isConnected
+                ? liveTabState.isEnabled
+                  ? "border-red-500 bg-red-600/25 text-white shadow-[0_0_12px_rgba(239,68,68,0.35)]"
+                  : "border-red-500/30 bg-white/5 text-zinc-400 hover:text-white"
+                : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <Tv
+              className={`size-3.5 ${
+                liveTabState?.isConnected && liveTabState.isEnabled
+                  ? "text-red-400 animate-pulse"
+                  : "text-zinc-400"
+              }`}
+            />
+            <span className="hidden sm:inline">YouTube In</span>
+            {liveTabState?.isConnected ? (
+              <span
+                className={`rounded px-1.5 py-0.2 text-[9px] font-mono font-bold ${
+                  liveTabState.isEnabled
+                    ? "bg-red-500 text-white"
+                    : "bg-zinc-700 text-zinc-300"
+                }`}
+              >
+                {liveTabState.isEnabled ? "ON" : "OFF"}
+              </span>
+            ) : (
+              <span className="rounded bg-white/10 px-1 text-[9px] font-mono text-zinc-400">+</span>
+            )}
           </button>
         )}
 

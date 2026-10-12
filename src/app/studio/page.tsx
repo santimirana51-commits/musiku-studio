@@ -14,6 +14,7 @@ import type {
   AudioAssetMeta,
   MasterTrack,
   AudioDriverType,
+  LiveTabAudioState,
 } from "@/lib/studio/types";
 import { createEmptyProject, createTrack } from "@/lib/studio/schema";
 import { StudioAudioEngine } from "@/lib/studio/audio-engine";
@@ -102,6 +103,15 @@ export default function StudioPage() {
   const [busLevels, setBusLevels] = useState<Record<string, number>>({});
   const [masterLevel, setMasterLevel] = useState<number>(0);
   const [inputLevel, setInputLevel] = useState<number>(0);
+  const [liveTabState, setLiveTabState] = useState<LiveTabAudioState>({
+    isConnected: false,
+    isEnabled: false,
+    volume: 1.0,
+    pan: 0,
+    isMuted: false,
+    isSolo: false,
+  });
+  const [liveTabLevel, setLiveTabLevel] = useState<number>(0);
 
   const projectRef = useRef(project);
   useEffect(() => {
@@ -496,6 +506,12 @@ export default function StudioPage() {
     // Enumerate devices
     engine.getAudioInputDevices().then(setInputDevices);
 
+    // Subscribe to live tab virtual cable state changes
+    const unsubLiveTab = engine.onLiveTabState((st) => {
+      setLiveTabState(st);
+      engine.getAudioInputDevices().then(setInputDevices);
+    });
+
     // Deteksi lirik masuk dari modul Karaoke MusikKu
     if (typeof window !== "undefined") {
       const incomingRaw = sessionStorage.getItem("musikku_studio_incoming_lyrics");
@@ -534,6 +550,7 @@ export default function StudioPage() {
       if (engine) {
         setMasterLevel(engine.getMasterLevel());
         setInputLevel(engine.getInputLevel());
+        setLiveTabLevel(engine.getLiveTabAudioLevel());
         const curProject = projectRef.current;
         const levels: Record<string, number> = {};
         for (const t of curProject.tracks) {
@@ -555,6 +572,7 @@ export default function StudioPage() {
       unsubState();
       unsubPlayhead();
       unsubRec();
+      unsubLiveTab();
       cancelAnimationFrame(animId);
       engine.stop();
     };
@@ -762,6 +780,70 @@ export default function StudioPage() {
     engine.rebuildAudioGraph();
     toast(`Subgroup Bus "${newBus.name}" berhasil ditambahkan!`, "success");
   }, [project, pushProjectState, engine, toast]);
+
+  // Handlers for Live Tab Audio / Virtual Cable (YouTube Input)
+  const handleConnectLiveTab = useCallback(async () => {
+    try {
+      toast("Pilih tab YouTube di jendela browser dan pastikan centang 'Bagikan audio tab'.", "info");
+      await engine.connectLiveTabAudio();
+      toast("Audio tab YouTube berhasil terhubung ke Mixer Console!", "success");
+      const devs = await engine.getAudioInputDevices();
+      setInputDevices(devs);
+    } catch (err: unknown) {
+      const error = err as { name?: string; message?: string };
+      if (error?.name === "NotAllowedError") {
+        toast("Koneksi audio tab dibatalkan oleh pengguna.", "info");
+      } else {
+        toast(error?.message || "Gagal menghubungkan audio tab.", "error");
+      }
+    }
+  }, [engine, toast]);
+
+  const handleDisconnectLiveTab = useCallback(() => {
+    engine.disconnectLiveTabAudio();
+    toast("Audio tab YouTube diputuskan dari Mixer.", "info");
+    void engine.getAudioInputDevices().then(setInputDevices);
+  }, [engine, toast]);
+
+  const handleToggleLiveTab = useCallback(() => {
+    if (!liveTabState.isConnected) {
+      void handleConnectLiveTab();
+      return;
+    }
+    const nextEnabled = engine.toggleLiveTabAudio();
+    toast(
+      nextEnabled ? "Audio tab YouTube AKTIF (Power ON)" : "Audio tab YouTube NONAKTIF (Power OFF)",
+      "info"
+    );
+  }, [liveTabState.isConnected, engine, handleConnectLiveTab, toast]);
+
+  const handleUpdateLiveTabVolume = useCallback(
+    (vol: number) => {
+      engine.setLiveTabAudioVolume(vol);
+    },
+    [engine]
+  );
+
+  const handleUpdateLiveTabPan = useCallback(
+    (pan: number) => {
+      engine.setLiveTabAudioPan(pan);
+    },
+    [engine]
+  );
+
+  const handleUpdateLiveTabMute = useCallback(
+    (mute: boolean) => {
+      engine.setLiveTabAudioMute(mute);
+    },
+    [engine]
+  );
+
+  const handleUpdateLiveTabSolo = useCallback(
+    (solo: boolean) => {
+      engine.setLiveTabAudioSolo(solo);
+    },
+    [engine]
+  );
 
   const handleDeleteTrack = useCallback((trackId: string) => {
     const current = projectRef.current;
@@ -2069,6 +2151,10 @@ export default function StudioPage() {
         inputLevel={inputLevel}
         inputDevices={inputDevices}
         selectedDeviceId={selectedDeviceId}
+        liveTabState={liveTabState}
+        liveTabLevel={liveTabLevel}
+        onToggleLiveTab={handleToggleLiveTab}
+        onConnectLiveTab={handleConnectLiveTab}
         canUndo={historyIdx > 0}
         canRedo={historyIdx < history.length - 1}
         onPlay={() => engine.play()}
@@ -2838,6 +2924,15 @@ export default function StudioPage() {
           trackLevels={trackLevels}
           busLevels={busLevels}
           masterLevel={masterLevel}
+          liveTabState={liveTabState}
+          liveTabLevel={liveTabLevel}
+          onConnectLiveTab={handleConnectLiveTab}
+          onDisconnectLiveTab={handleDisconnectLiveTab}
+          onToggleLiveTab={handleToggleLiveTab}
+          onUpdateLiveTabVolume={handleUpdateLiveTabVolume}
+          onUpdateLiveTabPan={handleUpdateLiveTabPan}
+          onUpdateLiveTabMute={handleUpdateLiveTabMute}
+          onUpdateLiveTabSolo={handleUpdateLiveTabSolo}
           onClose={() => setIsMixerOpen(false)}
           onUpdateTrack={handleUpdateTrack}
           onUpdateBus={handleUpdateBus}

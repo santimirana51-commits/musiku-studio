@@ -9,6 +9,7 @@ import type {
   AudioDeviceOption,
   PunchRange,
   ChannelStripSettings,
+  LiveTabAudioState,
 } from "./types";
 import { scheduleSynthNote, scheduleDrumSound, type DrumSoundType } from "./synth";
 import { buildEffectChain, type EffectChainHandle } from "./effects";
@@ -98,6 +99,19 @@ export class StudioAudioEngine {
   private onPlayheadCallbacks = new Set<(beat: number, sec: number) => void>();
   private onStateCallbacks = new Set<(state: TransportState) => void>();
   private onRecordFinalizedCallbacks = new Set<(trackId: string, clip: StudioClip, blob: Blob) => void>();
+
+  // Live Tab / YouTube Audio Stream
+  private liveTabStream: MediaStream | null = null;
+  private liveTabSourceNode: MediaStreamAudioSourceNode | null = null;
+  private liveTabGainNode: GainNode | null = null;
+  private liveTabPannerNode: StereoPannerNode | null = null;
+  private liveTabAnalyserNode: AnalyserNode | null = null;
+  private liveTabVolume = 1.0;
+  private liveTabPan = 0;
+  private liveTabMute = false;
+  private liveTabSolo = false;
+  private liveTabEnabled = false;
+  private onLiveTabStateCallbacks = new Set<(state: LiveTabAudioState) => void>();
 
   constructor() {}
 
@@ -285,6 +299,12 @@ export class StudioAudioEngine {
 
     this.updateTrackMutesAndSolos();
     this.updateBusMutesAndSolos();
+
+    if (this.liveTabAnalyserNode && this.masterEffectsHandle) {
+      try {
+        this.liveTabAnalyserNode.connect(this.masterEffectsHandle.inputNode);
+      } catch {}
+    }
   }
 
   public getBusLevel(busId: string): number {
@@ -874,13 +894,20 @@ export class StudioAudioEngine {
     }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      return devices
+      const options: AudioDeviceOption[] = devices
         .filter((d) => d.kind === "audioinput")
         .map((d, i) => ({
           deviceId: d.deviceId,
           label: d.label || `Microphone ${i + 1}`,
           groupId: d.groupId,
         }));
+      if (this.liveTabStream) {
+        options.unshift({
+          deviceId: "live-tab-audio",
+          label: "Tab Audio YouTube (Live Virtual Input)",
+        });
+      }
+      return options;
     } catch {
       return [];
     }
@@ -896,14 +923,18 @@ export class StudioAudioEngine {
     }
 
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: deviceId ? { exact: deviceId } : undefined,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
+      if (deviceId === "live-tab-audio" && this.liveTabStream) {
+        this.mediaStream = this.liveTabStream;
+      } else {
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: deviceId && deviceId !== "live-tab-audio" ? { exact: deviceId } : undefined,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        });
+      }
 
       // Live Level Metering
       const micSource = this.ctx.createMediaStreamSource(this.mediaStream);
@@ -953,10 +984,12 @@ export class StudioAudioEngine {
       });
     }
 
-    // Stop streams
+    // Stop streams (jangan matikan stream jika sedang menggunakan live tab audio)
     if (this.mediaStream) {
-      for (const track of this.mediaStream.getTracks()) {
-        track.stop();
+      if (this.mediaStream !== this.liveTabStream) {
+        for (const track of this.mediaStream.getTracks()) {
+          track.stop();
+        }
       }
       this.mediaStream = null;
     }
@@ -1095,4 +1128,188 @@ export class StudioAudioEngine {
     };
     this.onStateCallbacks.forEach((cb) => cb(state));
   }
+
+  // --- Live Tab Audio (YouTube Capture) ---
+
+  public async connectLiveTabAudio(): Promise<boolean> {
+    await this.init();
+    if (!this.ctx || !this.masterGain) return false;
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
+      throw new Error("Peramban Anda tidak mendukung penangkapan audio tab (getDisplayMedia).");
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        stream.getTracks().forEach((t) => t.stop());
+        throw new Error(
+          "Tidak ada audio yang terdeteksi dari tab tersebut. Pastikan opsi 'Bagikan audio tab' (Also share tab audio) dicentang saat memilih tab YouTube."
+        );
+      }
+
+      // Deteksi ketika user mengklik 'Stop sharing' di banner peramban
+      audioTracks[0].onended = () => {
+        this.disconnectLiveTabAudio();
+      };
+
+      this.disconnectLiveTabAudio(false);
+
+      this.liveTabStream = stream;
+      this.liveTabSourceNode = this.ctx.createMediaStreamSource(stream);
+      this.liveTabGainNode = this.ctx.createGain();
+      this.liveTabGainNode.gain.value = this.liveTabMute ? 0.0 : this.liveTabVolume;
+
+      this.liveTabPannerNode = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+      if (this.liveTabPannerNode) {
+        this.liveTabPannerNode.pan.value = this.liveTabPan;
+      }
+
+      this.liveTabAnalyserNode = this.ctx.createAnalyser();
+      this.liveTabAnalyserNode.fftSize = 256;
+
+      this.liveTabSourceNode.connect(this.liveTabGainNode);
+      if (this.liveTabPannerNode) {
+        this.liveTabGainNode.connect(this.liveTabPannerNode);
+        this.liveTabPannerNode.connect(this.liveTabAnalyserNode);
+      } else {
+        this.liveTabGainNode.connect(this.liveTabAnalyserNode);
+      }
+
+      const target = this.masterEffectsHandle?.inputNode || this.masterGain;
+      this.liveTabAnalyserNode.connect(target);
+
+      this.liveTabEnabled = true;
+      this.emitLiveTabState();
+      return true;
+    } catch (err) {
+      this.emitLiveTabState();
+      throw err;
+    }
+  }
+
+  public disconnectLiveTabAudio(emit = true): void {
+    if (this.liveTabStream) {
+      this.liveTabStream.getTracks().forEach((t) => t.stop());
+      this.liveTabStream = null;
+    }
+    if (this.liveTabSourceNode) {
+      try {
+        this.liveTabSourceNode.disconnect();
+      } catch {}
+      this.liveTabSourceNode = null;
+    }
+    if (this.liveTabGainNode) {
+      try {
+        this.liveTabGainNode.disconnect();
+      } catch {}
+      this.liveTabGainNode = null;
+    }
+    if (this.liveTabPannerNode) {
+      try {
+        this.liveTabPannerNode.disconnect();
+      } catch {}
+      this.liveTabPannerNode = null;
+    }
+    if (this.liveTabAnalyserNode) {
+      try {
+        this.liveTabAnalyserNode.disconnect();
+      } catch {}
+      this.liveTabAnalyserNode = null;
+    }
+    this.liveTabEnabled = false;
+    if (emit) this.emitLiveTabState();
+  }
+
+  public setLiveTabAudioEnabled(enabled: boolean): void {
+    if (!this.liveTabStream) return;
+    this.liveTabEnabled = enabled;
+    if (this.liveTabGainNode && this.ctx) {
+      const val = this.liveTabEnabled && !this.liveTabMute ? this.liveTabVolume : 0.0;
+      this.liveTabGainNode.gain.setTargetAtTime(val, this.ctx.currentTime, 0.01);
+    }
+    this.liveTabStream.getAudioTracks().forEach((t) => {
+      t.enabled = this.liveTabEnabled;
+    });
+    this.emitLiveTabState();
+  }
+
+  public toggleLiveTabAudio(): boolean {
+    if (!this.liveTabStream) return false;
+    this.setLiveTabAudioEnabled(!this.liveTabEnabled);
+    return this.liveTabEnabled;
+  }
+
+  public setLiveTabAudioVolume(vol: number): void {
+    this.liveTabVolume = Math.max(0, Math.min(2.0, vol));
+    if (this.liveTabGainNode && this.ctx && this.liveTabEnabled && !this.liveTabMute) {
+      this.liveTabGainNode.gain.setTargetAtTime(this.liveTabVolume, this.ctx.currentTime, 0.01);
+    }
+    this.emitLiveTabState();
+  }
+
+  public setLiveTabAudioPan(pan: number): void {
+    this.liveTabPan = Math.max(-1, Math.min(1, pan));
+    if (this.liveTabPannerNode && this.ctx) {
+      this.liveTabPannerNode.pan.setTargetAtTime(this.liveTabPan, this.ctx.currentTime, 0.01);
+    }
+    this.emitLiveTabState();
+  }
+
+  public setLiveTabAudioMute(mute: boolean): void {
+    this.liveTabMute = mute;
+    if (this.liveTabGainNode && this.ctx) {
+      const val = this.liveTabEnabled && !this.liveTabMute ? this.liveTabVolume : 0.0;
+      this.liveTabGainNode.gain.setTargetAtTime(val, this.ctx.currentTime, 0.01);
+    }
+    this.emitLiveTabState();
+  }
+
+  public setLiveTabAudioSolo(solo: boolean): void {
+    this.liveTabSolo = solo;
+    this.emitLiveTabState();
+  }
+
+  public getLiveTabAudioLevel(): number {
+    if (!this.liveTabAnalyserNode || !this.liveTabEnabled || this.liveTabMute) return 0;
+    const data = new Uint8Array(this.liveTabAnalyserNode.frequencyBinCount);
+    this.liveTabAnalyserNode.getByteTimeDomainData(data);
+    let max = 0;
+    for (let i = 0; i < data.length; i++) {
+      const val = Math.abs(data[i] - 128);
+      if (val > max) max = val;
+    }
+    return max / 128;
+  }
+
+  public getLiveTabAudioState(): LiveTabAudioState {
+    return {
+      isConnected: !!this.liveTabStream,
+      isEnabled: this.liveTabEnabled,
+      volume: this.liveTabVolume,
+      pan: this.liveTabPan,
+      isMuted: this.liveTabMute,
+      isSolo: this.liveTabSolo,
+    };
+  }
+
+  public onLiveTabState(cb: (state: LiveTabAudioState) => void): () => void {
+    this.onLiveTabStateCallbacks.add(cb);
+    return () => this.onLiveTabStateCallbacks.delete(cb);
+  }
+
+  private emitLiveTabState(): void {
+    const st = this.getLiveTabAudioState();
+    this.onLiveTabStateCallbacks.forEach((cb) => cb(st));
+  }
 }
+

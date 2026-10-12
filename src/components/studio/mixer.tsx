@@ -13,8 +13,12 @@ import {
   Flame,
   Shield,
   Zap,
+  Power,
+  Cable,
+  Unplug,
+  Tv,
 } from "lucide-react";
-import type { StudioProject, StudioTrack, SubgroupBus } from "@/lib/studio/types";
+import type { StudioProject, StudioTrack, SubgroupBus, LiveTabAudioState } from "@/lib/studio/types";
 import { ParametricEqDialog } from "./parametric-eq-dialog";
 import { sanitizeChannelStripSettings } from "@/lib/studio/channel-strip";
 
@@ -23,6 +27,15 @@ interface MixerProps {
   trackLevels: Record<string, number>;
   busLevels?: Record<string, number>;
   masterLevel: number;
+  liveTabState?: LiveTabAudioState;
+  liveTabLevel?: number;
+  onConnectLiveTab?: () => void;
+  onDisconnectLiveTab?: () => void;
+  onToggleLiveTab?: () => void;
+  onUpdateLiveTabVolume?: (vol: number) => void;
+  onUpdateLiveTabPan?: (pan: number) => void;
+  onUpdateLiveTabMute?: (mute: boolean) => void;
+  onUpdateLiveTabSolo?: (solo: boolean) => void;
   onClose: () => void;
   onUpdateTrack: (trackId: string, updates: Partial<StudioTrack>) => void;
   onUpdateBus?: (busId: string, updates: Partial<SubgroupBus>) => void;
@@ -37,6 +50,15 @@ export function Mixer({
   trackLevels,
   busLevels,
   masterLevel,
+  liveTabState,
+  liveTabLevel = 0,
+  onConnectLiveTab,
+  onDisconnectLiveTab,
+  onToggleLiveTab,
+  onUpdateLiveTabVolume,
+  onUpdateLiveTabPan,
+  onUpdateLiveTabMute,
+  onUpdateLiveTabSolo,
   onClose,
   onUpdateTrack,
   onUpdateBus,
@@ -593,6 +615,150 @@ export function Mixer({
           </div>
           <div className="text-center text-[8px] text-zinc-500 font-mono">
             Feedback 45%
+          </div>
+        </div>
+
+        {/* --- VIRTUAL CABLE / LIVE TAB AUDIO CHANNEL STRIP (YouTube Input) --- */}
+        <div
+          className={`flex w-28 shrink-0 flex-col justify-between rounded-xl border p-2 shadow-sm border-t-2 transition-all ${
+            liveTabState?.isConnected
+              ? liveTabState.isEnabled && !liveTabState.isMuted
+                ? "border-red-500/50 bg-gradient-to-b from-red-950/20 via-card to-zinc-950 border-t-red-500 shadow-red-950/30"
+                : "border-red-500/20 bg-gradient-to-b from-zinc-900 via-card to-zinc-950 border-t-zinc-600 opacity-80"
+              : "border-white/10 bg-gradient-to-b from-zinc-900/60 to-zinc-950 border-t-zinc-700"
+          }`}
+        >
+          {/* Header */}
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1">
+              <Tv className={`size-3 ${liveTabState?.isConnected && liveTabState.isEnabled ? "text-red-400" : "text-zinc-500"}`} />
+              <span className="block text-xs font-bold text-red-300 truncate">YOUTUBE IN</span>
+            </div>
+            <span className="text-[8px] font-mono text-zinc-400">Virtual Cable / Tab</span>
+
+            {/* Power Toggle Button / Connect Button */}
+            <div className="mt-1.5 flex items-center justify-center gap-1">
+              {liveTabState?.isConnected ? (
+                <>
+                  <button
+                    onClick={onToggleLiveTab}
+                    title={
+                      liveTabState.isEnabled
+                        ? "Klik untuk Matikan Audio YouTube (Power OFF)"
+                        : "Klik untuk Hidupkan Audio YouTube (Power ON)"
+                    }
+                    className={`flex flex-1 items-center justify-center gap-1 py-0.5 px-1 rounded text-[9px] font-bold border transition ${
+                      liveTabState.isEnabled
+                        ? "bg-red-600/30 text-red-200 border-red-500/60 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                        : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white"
+                    }`}
+                  >
+                    <Power className={`size-2.5 ${liveTabState.isEnabled ? "text-red-400 animate-pulse" : "text-zinc-500"}`} />
+                    <span>{liveTabState.isEnabled ? "ON" : "OFF"}</span>
+                  </button>
+                  <button
+                    onClick={onDisconnectLiveTab}
+                    title="Putuskan sambungan tab browser"
+                    className="p-1 rounded text-zinc-400 hover:text-red-300 hover:bg-white/10 transition"
+                  >
+                    <Unplug className="size-3" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={onConnectLiveTab}
+                  title="Hubungkan Audio Tab YouTube (Virtual Cable)"
+                  className="flex w-full items-center justify-center gap-1 py-1 px-1 rounded bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40 text-[9px] font-bold transition"
+                >
+                  <Cable className="size-2.5 text-red-400" />
+                  <span>Connect</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Pan Knob / Slider */}
+          <div className="my-1 flex flex-col items-center">
+            <span className="text-[8px] font-mono text-zinc-400">
+              PAN: {liveTabState?.pan === 0 || !liveTabState?.pan ? "C" : liveTabState.pan < 0 ? `L${Math.round(Math.abs(liveTabState.pan) * 100)}` : `R${Math.round(liveTabState.pan * 100)}`}
+            </span>
+            <input
+              type="range"
+              min={-1}
+              max={1}
+              step={0.05}
+              value={liveTabState?.pan ?? 0}
+              disabled={!liveTabState?.isConnected}
+              onChange={(e) => onUpdateLiveTabPan?.(parseFloat(e.target.value))}
+              className="h-1 w-16 accent-red-500 cursor-pointer disabled:opacity-40"
+            />
+          </div>
+
+          {/* Fader & VU Meter */}
+          <div className="flex flex-1 items-center justify-center gap-1.5 py-1">
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.01}
+              value={liveTabState?.volume ?? 1.0}
+              disabled={!liveTabState?.isConnected}
+              onChange={(e) => onUpdateLiveTabVolume?.(parseFloat(e.target.value))}
+              className="h-20 w-3.5 accent-red-500 cursor-pointer disabled:opacity-40"
+              style={{ writingMode: "vertical-lr", direction: "rtl" }}
+            />
+            <div className="h-20 w-2 rounded-full bg-black/80 overflow-hidden flex flex-col justify-end p-0.5">
+              <div
+                className="w-full rounded-full bg-gradient-to-t from-emerald-400 via-amber-400 to-red-500 transition-all duration-75"
+                style={{
+                  height: `${
+                    liveTabState?.isConnected && liveTabState.isEnabled && !liveTabState.isMuted
+                      ? Math.min(100, (liveTabLevel ?? 0) * 100)
+                      : 0
+                  }%`,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Volume dB */}
+          <div className="text-center font-mono text-[9px] text-red-200">
+            {liveTabState
+              ? liveTabState.volume <= 0.0001
+                ? "-inf dB"
+                : `${(20 * Math.log10(liveTabState.volume)).toFixed(1)} dB`
+              : "0.0 dB"}
+          </div>
+          <div className="text-center text-[8px] text-zinc-500 font-mono">
+            → MASTER FX
+          </div>
+
+          {/* Mute & Solo */}
+          <div className="mt-1 flex items-center justify-center gap-1">
+            <button
+              disabled={!liveTabState?.isConnected}
+              onClick={() => onUpdateLiveTabMute?.(!liveTabState?.isMuted)}
+              className={`size-5 rounded text-[9px] font-black transition ${
+                liveTabState?.isMuted
+                  ? "bg-amber-500 text-black shadow-sm"
+                  : "bg-white/10 text-zinc-400 hover:text-white disabled:opacity-30"
+              }`}
+              title="Mute Tab Audio"
+            >
+              M
+            </button>
+            <button
+              disabled={!liveTabState?.isConnected}
+              onClick={() => onUpdateLiveTabSolo?.(!liveTabState?.isSolo)}
+              className={`size-5 rounded text-[9px] font-black transition ${
+                liveTabState?.isSolo
+                  ? "bg-violet-500 text-white shadow-sm"
+                  : "bg-white/10 text-zinc-400 hover:text-white disabled:opacity-30"
+              }`}
+              title="Solo Tab Audio"
+            >
+              S
+            </button>
           </div>
         </div>
 

@@ -292,3 +292,12 @@ export interface Vst3PluginDescriptor {
   parametersCount: number;
   isAvailableOnPlatform: boolean;
 }
+
+export interface LiveTabAudioState {
+  isConnected: boolean;
+  isEnabled: boolean;
+  volume: number;
+  pan: number;
+  isMuted: boolean;
+  isSolo: boolean;
+}
