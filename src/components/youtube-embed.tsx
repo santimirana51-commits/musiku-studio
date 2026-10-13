@@ -67,7 +67,8 @@ export function YouTubeEmbed() {
             const t = p?.getCurrentTime?.() || 0;
             const eq = loadEqSettings();
             directStreamPlayerSingleton.applyGains(eq.gains, true);
-            if (videoId && (status === "playing" || p?.getPlayerState?.() === 1)) {
+            if (videoId) {
+              p?.playVideo?.();
               void directStreamPlayerSingleton.loadAndPlay(videoId, t);
             }
           } catch {}
@@ -225,17 +226,23 @@ export function YouTubeEmbed() {
     } catch {}
   }, [status]);
 
-  // Pemeriksaan drift dan jaminan zero-leakage audio YouTube iframe
+  // Pemeriksaan drift, watchdog kickstart, dan jaminan zero-leakage audio YouTube iframe
   useEffect(() => {
     const interval = setInterval(() => {
       const p = playerRef.current;
-      if (!p || status !== "playing") return;
+      if (!p) return;
       try {
+        const isYTPlaying = p.getPlayerState?.() === 1;
         if (isEqSyncRef.current) {
           // CEGAH BOCOR: Jika iframe tidak sengaja un-mute, bisukan seketika!
           if (p.isMuted && !p.isMuted()) {
             p.mute?.();
             p.setVolume?.(0);
+          }
+          // WATCHDOG: Jika YouTube jalan tapi direct stream belum play, jalankan otomatis tanpa perlu klik manual
+          if (isYTPlaying && directStreamPlayerSingleton.getState() !== "playing" && videoId) {
+            const ytTime = p.getCurrentTime?.() || 0;
+            void directStreamPlayerSingleton.loadAndPlay(videoId, ytTime);
           }
           const ytTime = p.getCurrentTime?.();
           const directTime = directStreamPlayerSingleton.getCurrentTime();
@@ -252,10 +259,10 @@ export function YouTubeEmbed() {
           }
         }
       } catch {}
-    }, 1500);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [status]);
+  }, [videoId]);
 
   const toggleEqSync = () => {
     const nextVal = !isEqSync;
@@ -265,12 +272,14 @@ export function YouTubeEmbed() {
 
     if (nextVal) {
       try {
-        playerRef.current?.mute?.();
-        playerRef.current?.setVolume?.(0);
-        const t = playerRef.current?.getCurrentTime?.() || 0;
+        const p = playerRef.current;
+        p?.mute?.();
+        p?.setVolume?.(0);
+        const t = p?.getCurrentTime?.() || 0;
         const eq = loadEqSettings();
         directStreamPlayerSingleton.applyGains(eq.gains, true);
-        if (videoId && (status === "playing" || playerRef.current?.getPlayerState?.() === 1)) {
+        if (videoId) {
+          p?.playVideo?.();
           void directStreamPlayerSingleton.loadAndPlay(videoId, t);
         }
         toast("Equalizer 10-Band diaktifkan & disinkronkan ke pemutar YouTube!", "success");

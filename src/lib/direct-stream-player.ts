@@ -240,6 +240,23 @@ export class DirectStreamPlayer {
 
     const isNewTrack = this.currentVideoId !== videoId;
     this.currentVideoId = videoId;
+
+    // Jalur resume kilat jika track sama (misal user mematikan Bypass EQ dan menghidupkannya lagi)
+    if (!isNewTrack && this.audio.src) {
+      if (startSec > 0) {
+        try {
+          this.audio.currentTime = startSec;
+        } catch {}
+      }
+      try {
+        await this.audio.play();
+        this.setState("playing");
+        return;
+      } catch (err: unknown) {
+        console.warn("[DirectStreamPlayer] Fast resume retry:", err);
+      }
+    }
+
     this.setState("loading");
 
     const streamUrl = `/api/stream?v=${encodeURIComponent(videoId)}`;
@@ -272,9 +289,17 @@ export class DirectStreamPlayer {
         if (error?.name === "NotAllowedError") {
           this.setState("paused");
         } else {
-          const onCanPlay = async () => {
+          if (this.audio.readyState >= 2) {
+            try {
+              await this.audio.play();
+              this.setState("playing");
+              return;
+            } catch {}
+          }
+          const onReadyToPlay = async () => {
             if (!this.audio) return;
-            this.audio.removeEventListener("canplay", onCanPlay);
+            this.audio.removeEventListener("canplay", onReadyToPlay);
+            this.audio.removeEventListener("seeked", onReadyToPlay);
             try {
               await this.audio.play();
               this.setState("playing");
@@ -282,7 +307,8 @@ export class DirectStreamPlayer {
               this.setState("paused");
             }
           };
-          this.audio.addEventListener("canplay", onCanPlay, { once: true });
+          this.audio.addEventListener("canplay", onReadyToPlay, { once: true });
+          this.audio.addEventListener("seeked", onReadyToPlay, { once: true });
         }
       }
     };
