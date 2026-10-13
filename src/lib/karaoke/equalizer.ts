@@ -96,7 +96,18 @@ function clean01(raw: unknown, fallback: number): number {
 export function loadEqSettings(): EqSettings {
   try {
     if (typeof localStorage === "undefined") return { ...DEFAULT_EQ_SETTINGS, gains: [...DEFAULT_EQ_SETTINGS.gains] };
-    const raw = localStorage.getItem(EQ_KEY);
+    let raw = localStorage.getItem(EQ_KEY);
+    if (!raw) {
+      const ytRaw = localStorage.getItem("musikku:youtube-eq");
+      if (ytRaw) {
+        try {
+          const ytObj = JSON.parse(ytRaw);
+          if (Array.isArray(ytObj.gains10)) {
+            raw = JSON.stringify({ preset: ytObj.preset, gains: ytObj.gains10 });
+          }
+        } catch {}
+      }
+    }
     if (!raw) return { ...DEFAULT_EQ_SETTINGS, gains: [...DEFAULT_EQ_SETTINGS.gains] };
     const j = JSON.parse(raw) as Partial<EqSettings>;
     const gains = cleanGains(j.gains);
@@ -115,9 +126,21 @@ export function loadEqSettings(): EqSettings {
 
 export function saveEqSettings(s: EqSettings): void {
   try {
+    const clampedGains = s.gains.map(clampDb);
     localStorage.setItem(
       EQ_KEY,
-      JSON.stringify({ ...s, gains: s.gains.map(clampDb), monitor: false })
+      JSON.stringify({ ...s, gains: clampedGains, monitor: false })
     );
+    localStorage.setItem(
+      "musikku:youtube-eq",
+      JSON.stringify({
+        enabled: true,
+        bandCount: 10,
+        preset: s.preset,
+        preamp: 0,
+        gains10: clampedGains,
+      })
+    );
+    localStorage.setItem("musikku:local-eq", JSON.stringify(clampedGains));
   } catch {}
 }

@@ -89,6 +89,7 @@ interface TimelineProps {
   onPlay?: () => void;
   onPause?: () => void;
   onSeparateStems?: (trackId: string, clip: StudioClip) => void;
+  onResizeAllTracks?: (height: number) => void;
 }
 
 export function Timeline({
@@ -119,6 +120,7 @@ export function Timeline({
   onPlay,
   onPause,
   onSeparateStems,
+  onResizeAllTracks,
   selectedClipIds: externalSelectedClipIds,
   onSelectClips,
   onMergeClips,
@@ -691,22 +693,47 @@ export function Timeline({
           </button>
         </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setPixelsPerBeat((p) => Math.max(24, p - 8))}
-            title="Zoom Out"
-            className="rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
-          >
-            <ZoomOut className="size-3.5" />
-          </button>
-          <span className="font-mono text-[10px] text-zinc-500">{pixelsPerBeat}px</span>
-          <button
-            onClick={() => setPixelsPerBeat((p) => Math.min(128, p + 8))}
-            title="Zoom In"
-            className="rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
-          >
-            <ZoomIn className="size-3.5" />
-          </button>
+        <div className="flex items-center gap-2">
+          {/* Track Height Resizer Controls */}
+          {onResizeAllTracks && (
+            <div className="flex items-center gap-1 border-r border-white/10 pr-2">
+              <span className="text-[10px] text-zinc-500 font-medium hidden sm:inline">Tinggi Track:</span>
+              {[
+                { label: "S", h: 64, title: "Kecil (64px)" },
+                { label: "M", h: 96, title: "Normal (96px)" },
+                { label: "L", h: 144, title: "Besar (144px)" },
+                { label: "XL", h: 200, title: "Ekstra Besar (200px)" },
+              ].map((size) => (
+                <button
+                  key={size.label}
+                  onClick={() => onResizeAllTracks(size.h)}
+                  title={`Atur Semua Tinggi Track ke ${size.title}`}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-bold border border-white/10 bg-white/5 text-zinc-300 hover:bg-violet-600/30 hover:text-white hover:border-violet-500/40 transition cursor-pointer"
+                >
+                  {size.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Horizontal Timeline Zoom */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPixelsPerBeat((p) => Math.max(16, p - 8))}
+              title="Zoom Out Timeline (Perkecil Skala Beat)"
+              className="rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            >
+              <ZoomOut className="size-3.5" />
+            </button>
+            <span className="font-mono text-[10px] text-zinc-400 min-w-8 text-center">{pixelsPerBeat}px</span>
+            <button
+              onClick={() => setPixelsPerBeat((p) => Math.min(192, p + 8))}
+              title="Zoom In Timeline (Perbesar Skala Beat)"
+              className="rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-white transition cursor-pointer"
+            >
+              <ZoomIn className="size-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import { MicEffectsChain } from "@/lib/karaoke/audio-effects";
 import {
   EQ_BANDS,
   EQ_PRESETS,
+  DEFAULT_EQ_SETTINGS,
   clampDb,
   matchPreset,
   loadEqSettings,
@@ -42,7 +43,7 @@ export function MicPanel() {
   const [devices, setDevices] = useState<MicDevice[]>([]);
   const [deviceId, setDeviceId] = useState<string>("");
   const [detecting, setDetecting] = useState(false);
-  const [fx, setFx] = useState<EqSettings>(() => loadEqSettings());
+  const [fx, setFx] = useState<EqSettings>(DEFAULT_EQ_SETTINGS);
   const supported = MicController.supported();
 
   const detect = async () => {
@@ -62,6 +63,7 @@ export function MicPanel() {
   };
 
   useEffect(() => {
+    setFx(loadEqSettings());
     void detect();
     const ctrl = ctrlRef.current!;
     const chain = chainRef.current;
@@ -304,9 +306,8 @@ export function MicPanel() {
 
       {/* Kejujuran sumber */}
       <p className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 text-[11px] leading-relaxed text-zinc-400">
-        EQ & efek di atas <strong className="text-zinc-200">hanya memproses suara mikrofon</strong>.
-        Audio video YouTube berjalan di iframe yang dilindungi browser (same-origin) sehingga
-        tidak dapat di-EQ oleh aplikasi — tidak ada kontrol palsu untuk itu.
+        EQ &amp; efek di atas <strong className="text-zinc-200">memproses suara mikrofon Anda</strong>.
+        Untuk menyetel equalizer musik pengiring / backing track YouTube, gunakan modul <strong>YouTube EQ</strong> di atas (dengan penangkapan audio tab atau ekstensi Chrome YouTube EQ).
       </p>
       <p className="text-[11px] leading-relaxed text-zinc-500">
         Preferensi tersimpan otomatis di perangkat ini. Penilaian pitch & ketepatan waktu:

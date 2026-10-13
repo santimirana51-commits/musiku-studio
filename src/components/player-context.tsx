@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -10,7 +11,7 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { VideoItem } from "@/lib/youtube";
-import { pushLocalHistory, saveQueue } from "@/lib/storage";
+import { loadQueue, pushLocalHistory, saveQueue } from "@/lib/storage";
 
 export type PlayerStatus = "idle" | "playing" | "paused" | "error";
 
@@ -46,6 +47,48 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isExpanded, setExpanded] = useState(false);
   const indexRef = useRef(0);
   indexRef.current = index;
+
+  // Pulihkan antrean dan lagu terakhir saat refresh browser (F5)
+  useEffect(() => {
+    try {
+      const q = loadQueue();
+      if (q && q.length > 0) {
+        setQueue(q);
+        const savedIndex = Number(localStorage.getItem("musikku:player-index") || "0");
+        if (Number.isFinite(savedIndex) && savedIndex >= 0 && savedIndex < q.length) {
+          setIndex(savedIndex);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Simpan indeks saat lagu berganti
+  useEffect(() => {
+    try {
+      localStorage.setItem("musikku:player-index", String(index));
+    } catch {}
+  }, [index]);
+
+  // Sinkronisasi antrean & indeks antar tab browser
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "musikku:queue" && e.newValue) {
+        try {
+          const nextQ = JSON.parse(e.newValue);
+          if (Array.isArray(nextQ)) {
+            setQueue(nextQ);
+          }
+        } catch {}
+      } else if (e.key === "musikku:player-index" && e.newValue) {
+        const i = Number(e.newValue);
+        if (Number.isFinite(i)) {
+          setIndex(i);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
   // Posisi terakhir per video — dipakai saat instance player berganti
   // (miniplayer <-> halaman watch) agar lagu lanjut, bukan ngulang.
   const resumeRef = useRef<{ videoId: string; seconds: number } | null>(null);

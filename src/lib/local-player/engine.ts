@@ -64,6 +64,7 @@ export class LocalAudioEngine {
   private status: LocalStatus = "idle";
   private onEvent: (e: LocalEngineEvent) => void;
   private index: number;
+  private currentGains: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
   constructor(
     onEvent: (e: LocalEngineEvent) => void = () => {},
@@ -86,6 +87,18 @@ export class LocalAudioEngine {
     this.audio.addEventListener("ended", this.handleEnded);
     this.audio.addEventListener("error", this.handleError);
     this.audio.addEventListener("timeupdate", this.handleTime);
+
+    try {
+      if (typeof localStorage !== "undefined") {
+        const raw = localStorage.getItem("musikku:local-eq");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length === 10) {
+            this.currentGains = parsed.map((v) => clampDb(Number(v) || 0));
+          }
+        }
+      }
+    } catch {}
   }
 
   private createCtx: () => AudioContext;
@@ -243,6 +256,7 @@ export class LocalAudioEngine {
   // ---------- EQ (Web Audio; no-op aman bila graph tak ada) ----------
 
   applyEq(gains: number[]): void {
+    this.currentGains = [...gains];
     for (let i = 0; i < this.eq.length; i++) {
       try {
         this.eq[i].gain.value = clampDb(gains[i] ?? 0);
@@ -258,11 +272,13 @@ export class LocalAudioEngine {
       const ctx = this.createCtx();
       const src = ctx.createMediaElementSource(this.audio as unknown as HTMLMediaElement);
       let head: AudioNode = src;
-      for (const b of EQ_BANDS) {
+      for (let i = 0; i < EQ_BANDS.length; i++) {
+        const b = EQ_BANDS[i];
         const f = ctx.createBiquadFilter();
         f.type = "peaking";
         f.frequency.value = b.freq;
         f.Q.value = 1;
+        f.gain.value = clampDb(this.currentGains[i] ?? 0);
         head.connect(f);
         head = f;
         this.eq.push(f);

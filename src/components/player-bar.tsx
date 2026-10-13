@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Pause, Play, SkipBack, SkipForward, ChevronUp, ChevronDown, ListVideo } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, ChevronUp, ChevronDown, ListVideo, Sliders } from "lucide-react";
 import { usePlayer } from "./player-context";
 import { YouTubeEmbed } from "./youtube-embed";
 
@@ -50,9 +50,13 @@ export function PlayerBar() {
               <span className="rounded border border-red-500/30 bg-red-600/20 px-1.5 py-0.5 text-[9px] font-bold text-red-300">
                 YouTube
               </span>
-              <span className="hidden rounded bg-white/5 px-1.5 py-0.5 text-[9px] text-zinc-400 sm:inline">
-                Foreground · Tanpa EQ
-              </span>
+              <Link
+                href="/equalizer"
+                className="hidden rounded border border-emerald-500/30 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300 hover:bg-emerald-500/30 sm:inline transition"
+                title="Equalizer 10-Band aktif & tersinkron real-time"
+              >
+                🟢 EQ 10-Band
+              </Link>
             </div>
             <p className="truncate text-sm font-semibold text-white">{current.title}</p>
             <p className="truncate text-xs text-zinc-400">{current.channelTitle}</p>
@@ -71,6 +75,14 @@ export function PlayerBar() {
           <button onClick={next} aria-label="Berikutnya" className="rounded-full p-2 text-zinc-300 hover:bg-white/10">
             <SkipForward className="size-5" aria-hidden />
           </button>
+          <Link
+            href="/equalizer"
+            title="Buka Master Equalizer 10-Band"
+            className="flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-600/10 px-2.5 py-1.5 text-xs font-bold text-violet-300 hover:bg-violet-600/20 transition cursor-pointer"
+          >
+            <Sliders className="size-3.5" />
+            <span className="hidden md:inline">EQ</span>
+          </Link>
           <button
             onClick={() => setExpanded(!isExpanded)}
             aria-label={isExpanded ? "Sembunyikan antrean" : "Tampilkan antrean"}

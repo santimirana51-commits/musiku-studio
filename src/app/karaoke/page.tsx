@@ -19,10 +19,12 @@ import {
 import { KaraokePlayer, type KaraokePlayerHandle } from "@/components/karaoke-player";
 import { LyricsPanel, type LyricTextSize, type LyricTheme } from "@/components/lyrics-panel";
 import { MicPanel } from "@/components/mic-panel";
+import { YoutubeEq } from "@/components/youtube-eq";
 import { VideoCard, VideoSkeleton, EmptyState } from "@/components/video-card";
 import { usePlayer } from "@/components/player-context";
 import { KaraokeEngine, type KaraokePlayerState, type LyricLine } from "@/lib/karaoke/engine";
 import { parseLrc, validateLrc } from "@/lib/karaoke/lrc";
+import { directStreamPlayerSingleton } from "@/lib/direct-stream-player";
 import type { VideoItem } from "@/lib/youtube";
 
 const CATEGORIES = [
@@ -97,6 +99,16 @@ function KaraokeInner() {
       onState: () => {},
     });
   }
+
+  useEffect(() => {
+    return directStreamPlayerSingleton.subscribe({
+      onTime: (t) => {
+        if (directStreamPlayerSingleton.getState() === "playing") {
+          engineRef.current?.update(t * 1000);
+        }
+      },
+    });
+  }, []);
 
   const fetchKaraoke = useCallback(async (q: string) => {
     setLoading(true);
@@ -476,6 +488,15 @@ function KaraokeInner() {
                   Status: {playerState} • sinkron per baris, tanpa reload
                 </span>
               </div>
+              <YoutubeEq
+                defaultExpanded={true}
+                videoId={video?.videoId}
+                onToggleDirectMode={(active) => {
+                  if (active) {
+                    playerRef.current?.pause();
+                  }
+                }}
+              />
               <MicPanel />
             </div>
 

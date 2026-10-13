@@ -15,6 +15,11 @@ export interface YTPlayer {
   getPlaybackRate?: () => number;
   destroy?: () => void;
   getPlayerState?: () => number;
+  mute?: () => void;
+  unMute?: () => void;
+  isMuted?: () => boolean;
+  setVolume?: (volume: number) => void;
+  getVolume?: () => number;
 }
 
 export interface YTPlayerEvent {

@@ -30,8 +30,14 @@ import {
   Activity,
   Layers,
   Radio,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Maximize2,
+  Minimize2,
   Tv,
 } from "lucide-react";
+import { useAppLayout } from "@/components/app-shell";
+import { AuthHeader } from "@/components/auth-header";
 import type { AudioDeviceOption, TransportState, TrackType, AudioDriverType, LiveTabAudioState } from "@/lib/studio/types";
 
 interface TransportBarProps {
@@ -143,6 +149,7 @@ export function TransportBar({
   onUndo,
   onRedo,
 }: TransportBarProps) {
+  const { isSidebarCollapsed, toggleSidebar, isFullscreen, toggleFullscreen } = useAppLayout();
   const [isTrackMenuOpen, setIsTrackMenuOpen] = useState(false);
   const [isMetronomeSettingsOpen, setIsMetronomeSettingsOpen] = useState(false);
   const [isDriverMenuOpen, setIsDriverMenuOpen] = useState(false);
@@ -165,6 +172,29 @@ export function TransportBar({
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-charcoal/95 px-4 py-2.5 backdrop-blur z-30 select-none font-sans">
       {/* Kiri: Nama Proyek & Menu Berkas */}
       <div className="flex items-center gap-2">
+        {/* Toggle Sidebar (Lebarkan DAW) */}
+        <button
+          onClick={toggleSidebar}
+          title={isSidebarCollapsed ? "Tampilkan Sidebar Navigasi" : "Sembunyikan Sidebar Navigasi (Lebarkan DAW)"}
+          className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+            isSidebarCollapsed
+              ? "border-violet-500 bg-violet-600/30 text-white shadow-sm"
+              : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          {isSidebarCollapsed ? (
+            <>
+              <PanelLeftOpen className="size-3.5 text-violet-300" />
+              <span className="hidden sm:inline">Buka Sidebar</span>
+            </>
+          ) : (
+            <>
+              <PanelLeftClose className="size-3.5 text-zinc-400" />
+              <span className="hidden lg:inline text-zinc-300">Tutup Sidebar</span>
+            </>
+          )}
+        </button>
+
         <div className="flex items-center gap-1.5 pr-2 border-r border-white/10">
           <span className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-violet-600 to-pink-600 text-white shadow-sm">
             <Music className="size-4" />
@@ -885,6 +915,34 @@ export function TransportBar({
               style={{ width: `${Math.min(100, masterLevel * 100)}%` }}
             />
           </div>
+        </div>
+
+        {/* Mode Fullscreen (Layar Penuh DAW) */}
+        <button
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Keluar Layar Penuh" : "Mode Layar Penuh DAW (Fullscreen)"}
+          className={`flex items-center gap-1 rounded-xl border px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+            isFullscreen
+              ? "border-emerald-500 bg-emerald-600/30 text-emerald-200"
+              : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white"
+          }`}
+        >
+          {isFullscreen ? (
+            <>
+              <Minimize2 className="size-3.5 text-emerald-400" />
+              <span className="hidden xl:inline">Layar Biasa</span>
+            </>
+          ) : (
+            <>
+              <Maximize2 className="size-3.5 text-zinc-400" />
+              <span className="hidden xl:inline">Layar Penuh</span>
+            </>
+          )}
+        </button>
+
+        {/* Auth / Akun Header */}
+        <div className="pl-1 border-l border-white/10 flex items-center">
+          <AuthHeader />
         </div>
       </div>
     </header>

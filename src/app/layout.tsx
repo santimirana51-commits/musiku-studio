@@ -3,10 +3,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PlayerProvider } from "@/components/player-context";
 import { ToastProvider } from "@/components/toast";
-import { Sidebar, MobileNav } from "@/components/nav";
-import { PlayerBar } from "@/components/player-bar";
-import { AuthHeader } from "@/components/auth-header";
-import { PwaRegister } from "@/components/pwa-register";
+import { AppShell } from "@/components/app-shell";
 import { ProjectProvider } from "@/lib/studio/project-context";
 
 export const viewport: Viewport = {
@@ -31,20 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ProjectProvider>
           <ToastProvider>
             <PlayerProvider>
-              <div className="flex min-h-screen">
-                <Sidebar />
-                <main className="min-w-0 flex-1 pb-36 md:pb-28">
-                  <div className="mx-auto max-w-6xl px-4 pt-4 md:px-8">
-                    <header className="mb-4 flex items-center justify-end">
-                      <AuthHeader />
-                    </header>
-                    {children}
-                  </div>
-                </main>
-              </div>
-              <PlayerBar />
-              <MobileNav />
-              <PwaRegister />
+              <AppShell>{children}</AppShell>
             </PlayerProvider>
           </ToastProvider>
         </ProjectProvider>

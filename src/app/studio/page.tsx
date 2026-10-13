@@ -2141,7 +2141,7 @@ export default function StudioPage() {
   }, [engine, handleUpdateTrack, pushProjectState, selectedDeviceId, toast]);
 
   return (
-    <div className="flex h-[calc(100vh-80px)] flex-col bg-zinc-950 overflow-hidden font-sans select-none rounded-2xl border border-white/10 shadow-2xl">
+    <div className="flex h-full w-full flex-col bg-zinc-950 overflow-hidden font-sans select-none">
       {/* Top Transport Toolbar */}
       <TransportBar
         projectName={project.name}
@@ -2863,6 +2863,7 @@ export default function StudioPage() {
           isPlaying={transport.playing}
           onPlay={() => engine.play()}
           onPause={() => engine.pause()}
+          onResizeAllTracks={handleResizeAllTracks}
           onSeparateStems={(trackId, clip) => setStemSeparationTarget({ trackId, clip })}
         />
       </div>

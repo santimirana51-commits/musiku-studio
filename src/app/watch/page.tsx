@@ -2,6 +2,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { YouTubeEmbed } from "@/components/youtube-embed";
+import { YoutubeEq } from "@/components/youtube-eq";
 import { VideoCard, EmptyState } from "@/components/video-card";
 import { usePlayer } from "@/components/player-context";
 import type { VideoItem } from "@/lib/youtube";
@@ -46,6 +47,7 @@ function WatchInner() {
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
       <div className="space-y-4">
         <YouTubeEmbed />
+        <YoutubeEq defaultExpanded={true} videoId={id} />
         {error && (
           <div className="rounded-2xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">
             <p className="font-semibold">Video tidak dapat diputar.</p>

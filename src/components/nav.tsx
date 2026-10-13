@@ -11,6 +11,7 @@ import {
   ListMusic,
   Mic2,
   Music,
+  PanelLeftClose,
   RefreshCw,
   Search,
   Settings,
@@ -36,20 +37,39 @@ const NAV = [
   { href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({
+  collapsed,
+  onToggleCollapse,
+}: {
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+} = {}) {
   const path = usePathname();
   const { status: syncStatus, queueCount } = useSyncEngine();
 
+  if (collapsed) return null;
+
   return (
-    <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-white/5 bg-charcoal/80 p-4 md:flex" aria-label="Navigasi utama">
-      <Link href="/" className="mb-4 flex items-center gap-2 px-2">
-        <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500">
-          <Disc3 className="size-5 text-white" aria-hidden />
-        </span>
-        <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-pink-300 bg-clip-text text-xl font-extrabold text-transparent">
-          MusikKu
-        </span>
-      </Link>
+    <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-white/5 bg-charcoal/80 p-4 md:flex transition-all duration-200" aria-label="Navigasi utama">
+      <div className="mb-4 flex items-center justify-between px-2">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500">
+            <Disc3 className="size-5 text-white" aria-hidden />
+          </span>
+          <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-pink-300 bg-clip-text text-xl font-extrabold text-transparent">
+            MusikKu
+          </span>
+        </Link>
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            title="Sembunyikan Sidebar"
+            className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white transition"
+          >
+            <PanelLeftClose className="size-4" />
+          </button>
+        )}
+      </div>
 
       {/* Indikator Status Sync Engine (§I & §G) */}
       <div className="mb-3 flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[11px] text-zinc-400">
