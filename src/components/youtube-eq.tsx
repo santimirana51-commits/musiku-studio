@@ -239,7 +239,7 @@ export function YoutubeEq({
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isTabConnected, eqState.enabled, eqState.gains10]);
+  }, [isTabConnected, eqState.enabled, eqState.gains10, directState]);
 
   const effectiveVideoId = videoId || player.current?.videoId;
 
