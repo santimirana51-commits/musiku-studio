@@ -21,22 +21,21 @@ const LOCAL_STORAGE_KEY = "musikku-studio-project";
  *   `projects` table whose schema matches `IProject`.
  * - Otherwise the project is stored in `localStorage` as a fallback for development.
  */
+import { createClient } from "@/lib/supabase/client";
+
 export async function saveProject(project: IProject): Promise<void> {
   // Attempt Supabase persistence if env vars are present.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseKey) {
-    // Lazy‑load the client to avoid pulling it into bundles that don’t need it.
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { error } = await supabase.from("projects").upsert(project);
-    if (error) {
-      console.error("Supabase project save error:", error);
-      // Fallback to localStorage on error.
-    } else {
-      return;
-    }
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("projects").upsert(project);
+      if (!error) {
+        return;
+      }
+    } catch {}
   }
 
   // Fallback: store the whole project JSON in localStorage.
@@ -59,17 +58,17 @@ export async function loadProject(id: string): Promise<IProject | null> {
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseKey) {
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data, error } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("id", id)
-      .single();
-    if (!error && data) {
-      return data as unknown as StudioProject;
-    }
-    console.warn("Supabase load failed, falling back to localStorage", error);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (!error && data) {
+        return data as unknown as StudioProject;
+      }
+    } catch {}
   }
 
   // Fallback: read from localStorage (ignores id – returns whatever is stored).
