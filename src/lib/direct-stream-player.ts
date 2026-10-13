@@ -26,6 +26,7 @@ export class DirectStreamPlayer {
   private currentGains = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   private isEqEnabled = true;
   private lastSavedTime = 0;
+  private failedVideoIds = new Set<string>();
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -131,6 +132,9 @@ export class DirectStreamPlayer {
     });
     this.audio.addEventListener("error", () => {
       const msg = this.audio?.error?.message || "Gagal memutar aliran audio.";
+      if (this.currentVideoId) {
+        this.failedVideoIds.add(this.currentVideoId);
+      }
       this.setState("error");
       this.listeners.forEach((l) => l.onError?.(msg));
     });
@@ -159,6 +163,16 @@ export class DirectStreamPlayer {
 
   public getState(): DirectPlayerState {
     return this.state;
+  }
+
+  public isFailedVideo(videoId?: string | null): boolean {
+    if (!videoId) return false;
+    return this.failedVideoIds.has(videoId);
+  }
+
+  public clearFailedVideo(videoId?: string | null): void {
+    if (videoId) this.failedVideoIds.delete(videoId);
+    else this.failedVideoIds.clear();
   }
 
   public getCurrentVideoId(): string | null {
@@ -238,6 +252,12 @@ export class DirectStreamPlayer {
 
     if (!this.audio) return;
 
+    if (this.failedVideoIds.has(videoId)) {
+      this.setState("error");
+      this.listeners.forEach((l) => l.onError?.("Aliran audio langsung tidak tersedia untuk video ini."));
+      return;
+    }
+
     const isNewTrack = this.currentVideoId !== videoId;
     this.currentVideoId = videoId;
 
@@ -253,7 +273,18 @@ export class DirectStreamPlayer {
         this.setState("playing");
         return;
       } catch (err: unknown) {
-        console.warn("[DirectStreamPlayer] Fast resume retry:", err);
+        const error = err as { name?: string; message?: string };
+        if (
+          error?.name === "NotSupportedError" ||
+          error?.message?.includes("supported sources")
+        ) {
+          this.failedVideoIds.add(videoId);
+          this.setState("error");
+          this.listeners.forEach((l) =>
+            l.onError?.("Aliran audio langsung tidak didukung atau dibatasi di server.")
+          );
+          return;
+        }
       }
     }
 
@@ -285,9 +316,18 @@ export class DirectStreamPlayer {
         await this.audio.play();
         this.setState("playing");
       } catch (err: unknown) {
-        const error = err as { name?: string };
+        const error = err as { name?: string; message?: string };
         if (error?.name === "NotAllowedError") {
           this.setState("paused");
+        } else if (
+          error?.name === "NotSupportedError" ||
+          error?.message?.includes("supported sources")
+        ) {
+          this.failedVideoIds.add(videoId);
+          this.setState("error");
+          this.listeners.forEach((l) =>
+            l.onError?.("Aliran audio langsung tidak didukung atau dibatasi di server.")
+          );
         } else {
           if (this.audio.readyState >= 2) {
             try {

@@ -12,8 +12,10 @@ export function AuthHeader() {
   useEffect(() => {
     if (!supabaseConfigured()) return;
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+    supabase.auth.getUser().then(({ data }: { data: { user?: { email?: string | null } | null } }) => {
+      setEmail(data?.user?.email ?? null);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e: unknown, session: { user?: { email?: string | null } } | null) => {
       setEmail(session?.user?.email ?? null);
     });
     return () => sub.subscription.unsubscribe();

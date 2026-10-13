@@ -97,7 +97,10 @@ export function YouTubeEmbed() {
             playerRef.current?.unMute?.();
             playerRef.current?.setVolume?.(100);
           } catch {}
-          toast("Stream audio langsung dialihkan ke audio resmi YouTube.", "info");
+          toast(
+            "Aliran audio langsung dibatasi di cloud hosting. Audio dialihkan otomatis ke pemutar resmi YouTube.",
+            "info"
+          );
         }
       },
     });
@@ -127,6 +130,8 @@ export function YouTubeEmbed() {
           modestbranding: 1,
           playsinline: 1,
           autoplay: 1,
+          enablejsapi: 1,
+          origin: typeof window !== "undefined" ? window.location.origin : undefined,
           // PENTING: Inisialisasi mute: 1 jika EQ aktif agar YouTube TIDAK bocor audio sama sekali
           ...(isEqSyncRef.current ? { mute: 1 } : { mute: 0 }),
           ...(resumeSec ? { start: resumeSec } : {}),
@@ -240,7 +245,13 @@ export function YouTubeEmbed() {
             p.setVolume?.(0);
           }
           // WATCHDOG: Jika YouTube jalan tapi direct stream belum play, jalankan otomatis tanpa perlu klik manual
-          if (isYTPlaying && directStreamPlayerSingleton.getState() !== "playing" && videoId) {
+          if (
+            isYTPlaying &&
+            directStreamPlayerSingleton.getState() !== "playing" &&
+            directStreamPlayerSingleton.getState() !== "error" &&
+            !directStreamPlayerSingleton.isFailedVideo(videoId) &&
+            videoId
+          ) {
             const ytTime = p.getCurrentTime?.() || 0;
             void directStreamPlayerSingleton.loadAndPlay(videoId, ytTime);
           }
