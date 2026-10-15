@@ -259,8 +259,11 @@ async function handleRequest(req, res) {
       return;
     }
 
-    const fetchStream = (url) =>
+    const fetchStream = (url, redirectCount = 0) =>
       new Promise((resolve, reject) => {
+        if (redirectCount > 5) {
+          return reject(new Error("Terlalu banyak redirect upstream"));
+        }
         try {
           const client = url.startsWith("https") ? https : http;
           const upstreamReq = client.request(
@@ -270,7 +273,17 @@ async function handleRequest(req, res) {
               headers: forwardHeaders,
               timeout: 10000,
             },
-            (upstreamRes) => resolve(upstreamRes)
+            (upstreamRes) => {
+              if (
+                [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
+                upstreamRes.headers.location
+              ) {
+                const nextUrl = new URL(upstreamRes.headers.location, url).toString();
+                upstreamRes.destroy();
+                return resolve(fetchStream(nextUrl, redirectCount + 1));
+              }
+              resolve(upstreamRes);
+            }
           );
 
           upstreamReq.on("timeout", () => {
