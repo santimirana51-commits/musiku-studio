@@ -388,21 +388,60 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000);
 
-server.listen(PORT, HOST, () => {
-  console.log(`======================================================`);
-  console.log(`🎵 MusikKu Stream Proxy Microservice`);
-  console.log(`🚀 Server aktif di: http://${HOST}:${PORT}`);
-  console.log(`🔍 yt-dlp binary : ${findYtDlpBinary()}`);
-  console.log(`🌐 Allowed origin : ${ALLOWED_ORIGIN}`);
-  console.log(`======================================================`);
-});
+// Inisialisasi HTTP Server pada semua port potensial (Railway PORT, 3001, 8080, 3000)
+const PORTS_TO_LISTEN = Array.from(
+  new Set(
+    [
+      PORT,
+      3001,
+      8080,
+      3000,
+      process.env.RAILWAY_PORT ? parseInt(process.env.RAILWAY_PORT, 10) : null,
+    ].filter(Boolean)
+  )
+);
+
+const activeServers = [];
+for (const p of PORTS_TO_LISTEN) {
+  try {
+    const s = http.createServer((req, res) => {
+      handleRequest(req, res).catch((err) => {
+        console.error("[StreamProxy] Unhandled error:", err);
+        if (!res.headersSent) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Terjadi kesalahan internal server." }));
+        }
+      });
+    });
+    s.on("error", (err) => {
+      if (err.code !== "EADDRINUSE") {
+        console.warn(`[StreamProxy] Notice on port ${p}:`, err.message);
+      }
+    });
+    s.listen(p, HOST, () => {
+      console.log(`🚀 Server aktif di: http://${HOST}:${p}`);
+    });
+    activeServers.push(s);
+  } catch (err) {
+    // Port sudah terikat
+  }
+}
+
+console.log(`======================================================`);
+console.log(`🎵 MusikKu Stream Proxy Microservice`);
+console.log(`🔍 yt-dlp binary : ${findYtDlpBinary()}`);
+console.log(`🌐 Allowed origin : ${ALLOWED_ORIGIN}`);
+console.log(`======================================================`);
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("[StreamProxy] SIGTERM received, shutting down gracefully...");
-  server.close(() => process.exit(0));
+  activeServers.forEach((s) => s.close());
+  setTimeout(() => process.exit(0), 1000);
 });
 process.on("SIGINT", () => {
   console.log("[StreamProxy] SIGINT received, shutting down gracefully...");
-  server.close(() => process.exit(0));
+  activeServers.forEach((s) => s.close());
+  setTimeout(() => process.exit(0), 1000);
 });
+
