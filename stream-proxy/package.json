@@ -1,0 +1,21 @@
+{
+  "name": "musiku-stream-proxy",
+  "version": "1.0.0",
+  "description": "Standalone high-performance audio streaming microservice for MusikKu YouTube Equalizer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "youtube",
+    "audio-stream",
+    "equalizer",
+    "musiku"
+  ],
+  "author": "MusikKu",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -53,4 +53,18 @@ describe("/api/stream", () => {
       expect(res.headers.get("access-control-allow-origin")).toBe("*");
     });
   });
+
+  describe("External Stream Proxy Redirect", () => {
+    const originalEnv = process.env.STREAM_PROXY_URL;
+
+    it("redirects with 307 to external proxy URL when configured", async () => {
+      process.env.STREAM_PROXY_URL = "https://musiku-stream.example.com";
+      const req = new NextRequest("http://localhost:3000/api/stream?v=3anKQbvVS90");
+      const res = await GET(req);
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("https://musiku-stream.example.com/api/stream?v=3anKQbvVS90");
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      process.env.STREAM_PROXY_URL = originalEnv;
+    });
+  });
 });

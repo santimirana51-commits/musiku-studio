@@ -23,6 +23,20 @@ async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Re
     );
   }
 
+  // Jika external stream proxy VPS dikonfigurasi, redirect 307 langsung ke VPS
+  // Ini membebaskan Vercel dari timeout 10 detik dan streaming audio yang berat
+  const externalProxy =
+    process.env.STREAM_PROXY_URL?.trim() ||
+    process.env.NEXT_PUBLIC_STREAM_PROXY_URL?.trim();
+  if (externalProxy) {
+    const cleanBase = externalProxy.replace(/\/+$/, "");
+    const targetUrl = `${cleanBase}/api/stream?${searchParams.toString()}`;
+    return NextResponse.redirect(targetUrl, {
+      status: 307,
+      headers: CORS_HEADERS,
+    });
+  }
+
   let directUrl = await resolveDirectAudioUrl(videoId);
   if (!directUrl) {
     return NextResponse.json(

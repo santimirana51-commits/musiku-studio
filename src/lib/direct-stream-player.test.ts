@@ -30,4 +30,21 @@ describe("DirectStreamPlayer Engine", () => {
     // Does not throw
     expect(true).toBe(true);
   });
+
+  describe("resolveStreamApiUrl", () => {
+    it("returns local /api/stream by default", async () => {
+      const { resolveStreamApiUrl } = await import("./direct-stream-player");
+      const url = resolveStreamApiUrl("3anKQbvVS90");
+      expect(url).toBe("/api/stream?v=3anKQbvVS90");
+    });
+
+    it("uses NEXT_PUBLIC_STREAM_PROXY_URL when set", async () => {
+      const prev = process.env.NEXT_PUBLIC_STREAM_PROXY_URL;
+      process.env.NEXT_PUBLIC_STREAM_PROXY_URL = "https://stream.example.com";
+      const { resolveStreamApiUrl } = await import("./direct-stream-player");
+      const url = resolveStreamApiUrl("3anKQbvVS90");
+      expect(url).toBe("https://stream.example.com/api/stream?v=3anKQbvVS90");
+      process.env.NEXT_PUBLIC_STREAM_PROXY_URL = prev;
+    });
+  });
 });

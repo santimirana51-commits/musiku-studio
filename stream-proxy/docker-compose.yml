@@ -1,0 +1,16 @@
+services:
+  musiku-stream:
+    build: .
+    container_name: musiku-stream-proxy
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - ALLOWED_ORIGIN=*
+      - CACHE_TTL_MINUTES=120
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

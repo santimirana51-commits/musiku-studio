@@ -26,6 +26,7 @@ Pastikan konfigurasi lingkungan berikut tersedia sebelum build/deploy:
 | `NEXT_PUBLIC_SUPABASE_URL` | URL instance Supabase | `https://xyzcompany.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Anon Key (aman untuk browser, diproteksi RLS) | `eyJhbGciOi...` |
 | `NEXT_PUBLIC_SITE_URL` | URL publik aplikasi (untuk callback auth) | `https://musikku.app` |
+| `NEXT_PUBLIC_STREAM_PROXY_URL` | (Opsional) URL publik external microservice stream-proxy untuk Equalizer YouTube Web | `https://musiku-stream-production.up.railway.app` |
 
 ### Variabel Privat (Server Saja — DILARANG diekspos ke client)
 | Variabel | Keterangan | Catatan Keamanan |
@@ -34,6 +35,7 @@ Pastikan konfigurasi lingkungan berikut tersedia sebelum build/deploy:
 | `YOUTUBE_API_KEY` | Kunci Google Cloud YouTube Data API v3 | Digunakan hanya di `/api/search` & `/api/videos` |
 | `MUSIC_MAX_FILE_MB` | Batas ukuran unggah file audio cloud (MB) | Default: `50` (maks DDL: 500 MB) |
 | `MUSIC_STORAGE_BUCKET` | Nama bucket Supabase Storage privat | Default: `music-files` |
+| `STREAM_PROXY_URL` | (Opsional) URL microservice proxy untuk redirect 307 di Next.js `/api/stream` | Sama dengan `NEXT_PUBLIC_STREAM_PROXY_URL` |
 
 ---
 
@@ -111,3 +113,30 @@ Aset PWA ditempatkan di folder `public/`:
 
 - Browser desktop dan mobile memiliki kuota IndexedDB yang bervariasi (biasanya hingga 60% sisa ruang disk di Chrome, 1GB di Safari mobile).
 - MusikKu menggunakan `navigator.storage.estimate()` untuk memonitor kapasitas penyimpanan lokal dan memanggil `navigator.storage.persist()` saat pengguna mulai menyimpan koleksi file lokal, agar data tidak dihapus otomatis oleh browser saat disk menipis.
+
+---
+
+## 8. Microservice Audio Stream Proxy (Railway / VPS)
+
+Untuk menjalankan **10-Band Equalizer Web Audio API pada audio YouTube** di lingkungan production tanpa hambatan serverless (seperti timeout 10 detik dan ketiadaan binary yt-dlp di Vercel), MusikKu menyediakan microservice mandiri di folder `stream-proxy/`.
+
+### 8.1 Deployment Cepat di Railway
+1. Di [railway.app](https://railway.app), buat project baru dari repo `musiku-studio`.
+2. Di Settings service Railway:
+   - Atur **Root Directory** ke: `stream-proxy`
+   - Railway otomatis mendeteksi Dockerfile.
+3. Di tab **Networking**, klik **Generate Domain** (contoh: `https://musiku-stream-production.up.railway.app`).
+4. Daftarkan domain tersebut ke environment variable Vercel:
+   - `NEXT_PUBLIC_STREAM_PROXY_URL`
+   - `STREAM_PROXY_URL`
+
+### 8.2 Deployment Mandiri di Linux VPS
+Tersedia skrip instalasi otomatis dan Docker Compose:
+```bash
+# Opsi A: Setup otomatis systemd (Ubuntu/Debian)
+cd stream-proxy && sudo bash setup-vps.sh
+
+# Opsi B: Docker Compose
+cd stream-proxy && docker compose up -d --build
+```
+Panduan detail Nginx reverse proxy dan SSL dapat dibaca di `stream-proxy/README.md`.

@@ -13,6 +13,19 @@ export interface DirectPlayerListener {
 
 const DIRECT_PLAYER_STORAGE_KEY = "musikku:direct-player-session";
 
+/**
+ * Menghasilkan URL stream audio endpoint.
+ * Mendukung proxy eksternal mandiri (VPS/Railway) melalui NEXT_PUBLIC_STREAM_PROXY_URL
+ */
+export function resolveStreamApiUrl(videoId: string): string {
+  const customProxy = process.env.NEXT_PUBLIC_STREAM_PROXY_URL?.trim();
+  if (customProxy) {
+    const cleanBase = customProxy.replace(/\/+$/, "");
+    return `${cleanBase}/api/stream?v=${encodeURIComponent(videoId)}`;
+  }
+  return `/api/stream?v=${encodeURIComponent(videoId)}`;
+}
+
 export class DirectStreamPlayer {
   private audio: HTMLAudioElement | null = null;
   private ctx: AudioContext | null = null;
@@ -95,7 +108,7 @@ export class DirectStreamPlayer {
         if (typeof session.volume === "number") {
           this.setVolume(session.volume);
         }
-        const streamUrl = `/api/stream?v=${encodeURIComponent(session.videoId)}`;
+        const streamUrl = resolveStreamApiUrl(session.videoId);
         if (this.audio) {
           this.audio.src = streamUrl;
           if (startSec > 0) {
@@ -290,7 +303,7 @@ export class DirectStreamPlayer {
 
     this.setState("loading");
 
-    const streamUrl = `/api/stream?v=${encodeURIComponent(videoId)}`;
+    const streamUrl = resolveStreamApiUrl(videoId);
     if (isNewTrack || !this.audio.src) {
       this.audio.src = streamUrl;
       this.audio.load();
