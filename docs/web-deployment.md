@@ -118,19 +118,39 @@ Aset PWA ditempatkan di folder `public/`:
 
 ## 8. Microservice Audio Stream Proxy (Railway / VPS)
 
-Untuk menjalankan **10-Band Equalizer Web Audio API pada audio YouTube** di lingkungan production tanpa hambatan serverless (seperti timeout 10 detik dan ketiadaan binary yt-dlp di Vercel), MusikKu menyediakan microservice mandiri di folder `stream-proxy/`.
+Untuk menjalankan **10-Band Equalizer Web Audio API pada audio YouTube** di lingkungan production tanpa hambatan serverless (seperti batas timeout 10 detik dan ketiadaan binary `yt-dlp` di Vercel), MusikKu menyediakan microservice audio stream proxy mandiri.
 
-### 8.1 Deployment Cepat di Railway
-1. Di [railway.app](https://railway.app), buat project baru dari repo `musiku-studio`.
-2. Di Settings service Railway:
-   - Atur **Root Directory** ke: `stream-proxy`
-   - Railway otomatis mendeteksi Dockerfile.
-3. Di tab **Networking**, klik **Generate Domain** (contoh: `https://musiku-stream-production.up.railway.app`).
-4. Daftarkan domain tersebut ke environment variable Vercel:
-   - `NEXT_PUBLIC_STREAM_PROXY_URL`
-   - `STREAM_PROXY_URL`
+### 8.1 Deployment Cepat di Railway (Auto-Detect)
+Repositori telah dilengkapi dengan `Dockerfile` dan `railway.json` di root:
+1. Di [railway.app](https://railway.app), klik **"New Project"** → **"Deploy from GitHub repo"** → pilih repo `musiku-studio`.
+2. Railway akan **otomatis mendeteksi Dockerfile root** dan langsung memulai build (tidak perlu ubah root directory).
+3. **PENTING — Suggested Variables di Railway:**
+   - Railway akan memindai source code dan menyarankan variabel seperti `YOUTUBE_API_KEY`, Supabase, dll.
+   - **Abaikan / jangan klik Add**. Microservice `stream-proxy` berjalan mandiri (*zero external dependencies*) dan hanya memerlukan variabel `PORT` yang sudah otomatis diatur oleh Railway.
+4. Di tab **Settings** → **Networking** (Public Networking), klik **"Generate Domain"** (contoh: `https://musiku-studio-production-xxxx.up.railway.app`).
+5. **Verifikasi Proxy Aktif:**
+   Buka di browser:
+   ```text
+   https://<domain-railway-anda>/health
+   ```
+   Pastikan mengembalikan respon JSON `{"status":"ok", "service":"musiku-stream-proxy", ...}`.
 
-### 8.2 Deployment Mandiri di Linux VPS
+### 8.2 Menghubungkan Railway Proxy ke Vercel (Web Utama)
+Di dashboard Vercel pada proyek web MusikKu Anda:
+1. Buka **Project Settings** → **Environment Variables**.
+2. Daftarkan 2 variabel berikut (masukkan base URL HTTPS tanpa akhiran `/api/stream`):
+   - `NEXT_PUBLIC_STREAM_PROXY_URL` = `https://<domain-railway-anda>`
+   - `STREAM_PROXY_URL` = `https://<domain-railway-anda>`
+3. Klik **Save** lalu lakukan **Redeploy** di Vercel.
+
+### 8.3 Mekanisme Graceful Fallback (Pengaman Otomatis)
+Jika proxy belum dikonfigurasi, sedang offline, atau stream audio dibatasi:
+- Aplikasi web **tidak akan macet atau error**.
+- Sistem secara otomatis mengalihkan audio ke player resmi YouTube bawaan (IFrame) dengan notifikasi info:
+  *"Aliran audio langsung dibatasi di cloud hosting. Audio dialihkan otomatis ke pemutar resmi YouTube."*
+- Musik tetap diputar dengan lancar bagi pengguna.
+
+### 8.4 Deployment Mandiri di Linux VPS
 Tersedia skrip instalasi otomatis dan Docker Compose:
 ```bash
 # Opsi A: Setup otomatis systemd (Ubuntu/Debian)

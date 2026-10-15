@@ -17,14 +17,13 @@ Dengan memisahkan endpoint `/api/stream` ke microservice mandiri ini, streaming 
 
 ## 🛠️ Pilihan Deployment
 
-### Pilihan 1: Deploy di Railway (Paling Cepat & Gratis)
+### Pilihan 1: Deploy di Railway (Auto-Detect & Paling Cepat)
 1. Buka [railway.app](https://railway.app) dan login dengan akun GitHub Anda.
 2. Klik **"New Project"** -> **"Deploy from GitHub repo"** -> pilih repo `musiku-studio`.
-3. Di pengaturan service Railway:
-   - Atur **Root Directory**: `stream-proxy`
-   - Railway akan otomatis mendeteksi [Dockerfile](file:///home/miran/projec/musiku/stream-proxy/Dockerfile).
-4. Di tab **Settings** -> **Networking**, klik **"Generate Domain"** (misal: `musiku-stream-production.up.railway.app`).
-5. Selesai! Salin domain HTTPS yang didapat.
+3. Railway otomatis mendeteksi `Dockerfile` dan `railway.json` di root (tidak perlu ubah root directory).
+4. **Suggested Variables:** Railway akan menyarankan variabel Next.js (`YOUTUBE_API_KEY`, Supabase, dll.). **Abaikan/tidak perlu diisi**, karena microservice ini mandiri dan hanya butuh `PORT`.
+5. Di tab **Settings** -> **Networking** (Public Networking), klik **"Generate Domain"** (contoh: `https://musiku-studio-production-xxxx.up.railway.app`).
+6. **Uji Service:** Buka `https://<domain-railway-anda>/health` di browser. Jika keluar JSON `{"status":"ok", ...}`, proxy sudah 100% online.
 
 ---
 
@@ -83,14 +82,14 @@ sudo certbot --nginx -d stream.domainanda.com
 
 ## 🔗 Menghubungkan ke Vercel
 
-Setelah microservice aktif dan memiliki URL publik (misal `https://musiku-stream-production.up.railway.app` atau `https://stream.domainanda.com`):
+Setelah microservice aktif dan memiliki URL publik (misal `https://musiku-studio-production-xxxx.up.railway.app` atau `https://stream.domainanda.com`):
 
 1. Buka dashboard [Vercel](https://vercel.com) -> Proyek **MusikKu**.
 2. Masuk ke tab **Settings** -> **Environment Variables**.
-3. Tambahkan 2 variabel berikut:
-   - **`NEXT_PUBLIC_STREAM_PROXY_URL`** = `https://musiku-stream-production.up.railway.app`
-   - **`STREAM_PROXY_URL`** = `https://musiku-stream-production.up.railway.app`
-4. Tekan **Save** lalu lakukan **Redeploy** di Vercel (atau jalankan `git deploy`).
+3. Tambahkan 2 variabel berikut (masukkan base URL HTTPS tanpa akhiran `/api/stream`):
+   - **`NEXT_PUBLIC_STREAM_PROXY_URL`** = `https://<domain-railway-atau-vps-anda>`
+   - **`STREAM_PROXY_URL`** = `https://<domain-railway-atau-vps-anda>`
+4. Tekan **Save** lalu lakukan **Redeploy** di Vercel (atau lakukan git push).
 
 ### Hasil:
 - Browser pengguna akan langsung terhubung ke stream proxy VPS untuk audio equalizer.
