@@ -107,12 +107,11 @@ async function resolveViaYtDlp(videoId) {
  */
 async function resolveViaFallback(videoId) {
   const instances = [
-    { type: "invidious", url: "https://inv.tux.pizza" },
+    { type: "invidious", url: "https://invidious.f5.si" },
     { type: "invidious", url: "https://yewtu.be" },
-    { type: "invidious", url: "https://invidious.nerdvpn.de" },
+    { type: "invidious", url: "https://inv.nadeko.net" },
     { type: "piped", url: "https://pipedapi.kavin.rocks" },
-    { type: "piped", url: "https://api.piped.privacydev.net" },
-    { type: "piped", url: "https://pipedapi.tokhmi.xyz" },
+    { type: "piped", url: "https://pipedapi.drgns.space" },
   ];
 
   for (const inst of instances) {

@@ -106,17 +106,14 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
  */
 export async function resolveViaPublicInstances(videoId: string): Promise<string | null> {
   const invidiousInstances = [
-    "https://inv.tux.pizza",
+    "https://invidious.f5.si",
     "https://yewtu.be",
-    "https://invidious.nerdvpn.de",
-    "https://invidious.projectsegfau.lt",
+    "https://inv.nadeko.net",
   ];
 
   const pipedInstances = [
     "https://pipedapi.kavin.rocks",
-    "https://api.piped.privacydev.net",
-    "https://pipedapi.tokhmi.xyz",
-    "https://pipedapi.moomoo.me",
+    "https://pipedapi.drgns.space",
   ];
 
   // Coba Invidious
