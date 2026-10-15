@@ -6,3 +6,4 @@ out
 coverage
 tsconfig.tsbuildinfo
 src-tauri/target/debug/incremental/
+Alexis-EQ/

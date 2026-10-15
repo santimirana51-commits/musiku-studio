@@ -1,5 +1,6 @@
 // src/lib/youtube-eq.ts
 // Manajemen Pengaturan, Preset, dan Web Audio Engine untuk YouTube EQ
+import { applyNativeGains, setNativeEqualizerEnabled } from "./native-equalizer";
 
 export interface YoutubeEqBand {
   freq: number;
@@ -127,6 +128,7 @@ export function saveYoutubeEqState(state: YoutubeEqState): void {
       localStorage.setItem("musikku:local-eq", JSON.stringify(state.gains10));
     }
   } catch {}
+  void applyNativeGains(state.gains10, state.enabled);
 }
 
 export const EQ_SYNC_KEY = "musikku:eq-sync-enabled";
@@ -153,6 +155,7 @@ export function setGlobalEqSync(enabled: boolean): void {
       window.dispatchEvent(new CustomEvent(EQ_SYNC_EVENT, { detail: enabled }));
     }
   } catch {}
+  void setNativeEqualizerEnabled(enabled);
 }
 
 /**
@@ -287,6 +290,7 @@ export class YoutubeEqEngine {
   }
 
   public updateGains(gains: number[], enabled = true): void {
+    void applyNativeGains(gains, enabled);
     if (!this.ctx || this.filters.length === 0) return;
     if (this.ctx.state === "suspended") {
       void this.ctx.resume();

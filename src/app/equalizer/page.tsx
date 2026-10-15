@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sliders, RotateCcw, Check, Info, Music, Volume2, Play, Pause } from "lucide-react";
+import { Sliders, RotateCcw, Check, Info, Music, Volume2, Play, Pause, Smartphone, Settings } from "lucide-react";
 import { useToast } from "@/components/toast";
 import { usePlayer } from "@/components/player-context";
 import {
@@ -25,6 +25,7 @@ import {
   EQ_SYNC_EVENT,
 } from "@/lib/youtube-eq";
 import { directStreamPlayerSingleton } from "@/lib/direct-stream-player";
+import { isAndroidNative, openSystemEqualizerPanel } from "@/lib/native-equalizer";
 
 export default function EqualizerPage() {
   const { toast } = useToast();
@@ -32,6 +33,11 @@ export default function EqualizerPage() {
   const [settings, setSettings] = useState<EqSettings>(DEFAULT_EQ_SETTINGS);
   const [activePreset, setActivePreset] = useState<string>("flat");
   const [directState, setDirectState] = useState<string>("idle");
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  useEffect(() => {
+    setIsAndroid(isAndroidNative());
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -194,6 +200,33 @@ export default function EqualizerPage() {
             </span>
           </button>
         </div>
+
+        {isAndroid && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-500/30 bg-blue-950/40 p-3.5 text-xs text-blue-200">
+            <div className="flex items-center gap-2.5">
+              <span className="grid size-8 place-items-center rounded-xl bg-blue-500/20 text-blue-400 shrink-0">
+                <Smartphone className="size-4" />
+              </span>
+              <div>
+                <span className="font-bold">Android Hardware DSP Equalizer Terhubung</span>
+                <p className="text-[11px] text-blue-300/80">
+                  Slider dan preset di bawah ini langsung memprogram chip audio HP Anda secara hardware — bebas blokir YouTube!
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                toast("Membuka panel equalizer sistem ponsel...", "info");
+                const ok = await openSystemEqualizerPanel();
+                if (!ok) toast("Panel equalizer sistem tidak didukung di perangkat ini.", "error");
+              }}
+              className="flex items-center gap-1.5 rounded-xl border border-blue-400/40 bg-blue-600/30 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-600/50 transition cursor-pointer"
+            >
+              <Settings className="size-3.5" />
+              <span>Buka Panel Sistem HP</span>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Kartu Status Lagu YouTube Aktif & Tersinkron */}

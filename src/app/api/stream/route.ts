@@ -1,96 +1,17 @@
+// src/app/api/stream/route.ts
+// Direct Stream Audio Proxy dengan dukungan HTTP 206 Range, Full CORS, HEAD & OPTIONS preflight
+
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import fs from "fs";
+import {
+  CORS_HEADERS,
+  resolveDirectAudioUrl,
+  streamUrlCache,
+} from "@/lib/audio-stream-resolver";
 
-const execFileAsync = promisify(execFile);
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-// Cache URL stream audio selama 2 jam agar tidak menjalankan yt-dlp berulang kali untuk video yang sama
-const urlCache = new Map<string, { url: string; expiresAt: number }>();
-const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
-
-function findYtDlpBinary(): string {
-  const commonPaths = [
-    "/home/miran/.local/bin/yt-dlp",
-    "/usr/local/bin/yt-dlp",
-    "/usr/bin/yt-dlp",
-    "yt-dlp",
-  ];
-  for (const p of commonPaths) {
-    if (p === "yt-dlp") return p;
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch {}
-  }
-  return "yt-dlp";
-}
-
-async function resolveDirectAudioUrl(videoId: string): Promise<string | null> {
-  const cached = urlCache.get(videoId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.url;
-  }
-
-  const binary = findYtDlpBinary();
-  const videoTarget = `https://www.youtube.com/watch?v=${videoId}`;
-
-  try {
-    const { stdout } = await execFileAsync(
-      binary,
-      ["-g", "-f", "bestaudio[ext=m4a]/bestaudio", videoTarget],
-      { timeout: 15000 }
-    );
-    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
-    if (resolvedUrl && resolvedUrl.startsWith("http")) {
-      urlCache.set(videoId, {
-        url: resolvedUrl,
-        expiresAt: Date.now() + CACHE_TTL_MS,
-      });
-      return resolvedUrl;
-    }
-  } catch (err) {
-    console.warn("[Stream API] yt-dlp resolution failed:", err);
-  }
-
-  // Fallback ke Piped API instances jika yt-dlp gagal
-  const pipedInstances = [
-    "https://pipedapi.kavin.rocks",
-    "https://api.piped.privacydev.net",
-    "https://pipedapi.tokhmi.xyz",
-  ];
-
-  for (const instance of pipedInstances) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(`${instance}/streams/${videoId}`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const audioStreams = data.audioStreams as Array<{ url: string; bitrate?: number }> | undefined;
-        if (audioStreams && audioStreams.length > 0) {
-          // Pilih stream dengan bitrate audio terbaik
-          audioStreams.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
-          const bestUrl = audioStreams[0].url;
-          if (bestUrl) {
-            urlCache.set(videoId, {
-              url: bestUrl,
-              expiresAt: Date.now() + CACHE_TTL_MS,
-            });
-            return bestUrl;
-          }
-        }
-      }
-    } catch {}
-  }
-
-  return null;
-}
-
-export async function GET(req: NextRequest) {
+async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const videoId = searchParams.get("v");
 
@@ -98,46 +19,100 @@ export async function GET(req: NextRequest) {
   if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
     return NextResponse.json(
       { error: "Parameter videoId ('v') tidak valid." },
-      { status: 400 }
+      { status: 400, headers: CORS_HEADERS }
     );
   }
 
-  const directUrl = await resolveDirectAudioUrl(videoId);
+  let directUrl = await resolveDirectAudioUrl(videoId);
   if (!directUrl) {
     return NextResponse.json(
       { error: "Gagal mengekstrak aliran audio untuk video ini." },
-      { status: 502 }
+      { status: 502, headers: CORS_HEADERS }
     );
   }
 
-  // Teruskan header Range jika pemutar audio meminta seeking (HTTP 206 Partial Content)
+  // Teruskan header Range dan User-Agent dari browser pemutar
   const rangeHeader = req.headers.get("range");
   const forwardHeaders: Record<string, string> = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent":
+      req.headers.get("user-agent") ||
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept: "*/*",
   };
   if (rangeHeader) {
     forwardHeaders["range"] = rangeHeader;
   }
 
-  try {
-    const upstreamRes = await fetch(directUrl, {
-      headers: forwardHeaders,
-    });
+  const fetchWithTimeout = async (url: string): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6500);
+    try {
+      return await fetch(url, {
+        method: isHead ? "HEAD" : "GET",
+        headers: forwardHeaders,
+        redirect: "follow",
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
 
-    if (!upstreamRes.ok && upstreamRes.status !== 206) {
-      // Jika URL kedaluwarsa, hapus dari cache dan coba sekali lagi
-      urlCache.delete(videoId);
+  try {
+    let upstreamRes: Response | null = null;
+    try {
+      upstreamRes = await fetchWithTimeout(directUrl);
+    } catch {
+      // Jika fetch pertama timeout/gagal, hapus cache dan coba dapatkan URL baru
+      streamUrlCache.delete(videoId);
+      const freshUrl = await resolveDirectAudioUrl(videoId, true);
+      if (freshUrl) {
+        directUrl = freshUrl;
+        try {
+          upstreamRes = await fetchWithTimeout(directUrl);
+        } catch {}
+      }
+    }
+
+    // Jika upstream kedaluwarsa (403, 404, 410), refresh URL secara otomatis sekali lagi
+    if (upstreamRes && !upstreamRes.ok && upstreamRes.status !== 206) {
+      if (upstreamRes.status === 403 || upstreamRes.status === 404 || upstreamRes.status === 410) {
+        streamUrlCache.delete(videoId);
+        const freshUrl = await resolveDirectAudioUrl(videoId, true);
+        if (freshUrl) {
+          directUrl = freshUrl;
+          try {
+            upstreamRes = await fetchWithTimeout(directUrl);
+          } catch {}
+        }
+      }
+    }
+
+    if (!upstreamRes) {
+      streamUrlCache.delete(videoId);
       return NextResponse.json(
-        { error: "Aliran audio dari sumber tidak tersedia." },
-        { status: upstreamRes.status }
+        { error: "Koneksi ke aliran audio timeout atau tidak dapat dijangkau." },
+        { status: 504, headers: CORS_HEADERS }
       );
     }
 
+    if (!upstreamRes.ok && upstreamRes.status !== 206) {
+      return NextResponse.json(
+        { error: "Aliran audio dari sumber tidak tersedia." },
+        { status: upstreamRes.status, headers: CORS_HEADERS }
+      );
+    }
+
+    // Bangun response headers dengan dukungan CORS dan Range audio lengkap
     const responseHeaders = new Headers();
+    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+      responseHeaders.set(k, v);
+    }
+
     const contentType = upstreamRes.headers.get("content-type") || "audio/mp4";
     responseHeaders.set("Content-Type", contentType);
     responseHeaders.set("Accept-Ranges", "bytes");
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    responseHeaders.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
 
     const contentLength = upstreamRes.headers.get("content-length");
     if (contentLength) responseHeaders.set("Content-Length", contentLength);
@@ -145,15 +120,31 @@ export async function GET(req: NextRequest) {
     const contentRange = upstreamRes.headers.get("content-range");
     if (contentRange) responseHeaders.set("Content-Range", contentRange);
 
-    return new Response(upstreamRes.body, {
+    return new Response(isHead ? null : upstreamRes.body, {
       status: upstreamRes.status,
       headers: responseHeaders,
     });
   } catch (err) {
     console.error("[Stream API] Streaming error:", err);
+    streamUrlCache.delete(videoId);
     return NextResponse.json(
       { error: "Gagal mengalirkan audio." },
-      { status: 500 }
+      { status: 502, headers: CORS_HEADERS }
     );
   }
+}
+
+export async function GET(req: NextRequest) {
+  return handleStreamRequest(req, false);
+}
+
+export async function HEAD(req: NextRequest) {
+  return handleStreamRequest(req, true);
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
 }

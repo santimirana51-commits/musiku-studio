@@ -9,6 +9,8 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  Smartphone,
+  Settings,
 } from "lucide-react";
 import {
   YOUTUBE_EQ_10_BANDS,
@@ -24,6 +26,7 @@ import {
   type YoutubeEqState,
 } from "@/lib/youtube-eq";
 import { directStreamPlayerSingleton, type DirectPlayerState } from "@/lib/direct-stream-player";
+import { isAndroidNative, openSystemEqualizerPanel } from "@/lib/native-equalizer";
 import { useToast } from "@/components/toast";
 import { usePlayer } from "@/components/player-context";
 
@@ -47,9 +50,14 @@ export function YoutubeEq({
   const [isTabConnected, setIsTabConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [directState, setDirectState] = useState<DirectPlayerState>("idle");
+  const [isAndroid, setIsAndroid] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setIsAndroid(isAndroidNative());
+  }, []);
 
   // Subscribe ke status DirectStreamPlayer
   useEffect(() => {
@@ -303,6 +311,14 @@ export function YoutubeEq({
 
 
 
+  const handleOpenSystemPanel = async () => {
+    toast("Membuka panel equalizer sistem ponsel...", "info");
+    const ok = await openSystemEqualizerPanel();
+    if (!ok) {
+      toast("Panel equalizer sistem tidak didukung di perangkat ini.", "error");
+    }
+  };
+
   const handleConnectTab = async () => {
     if (isTabConnected) {
       youtubeEqEngineSingleton.disconnect();
@@ -340,7 +356,12 @@ export function YoutubeEq({
               <h2 className="text-sm font-extrabold text-white sm:text-base">
                 YouTube EQ <span className="text-violet-400 font-mono text-xs font-normal">(Equalizer)</span>
               </h2>
-              {eqState.enabled ? (
+              {isAndroid ? (
+                <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-bold text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                  <Smartphone className="size-3 text-blue-400" />
+                  ANDROID HARDWARE DSP EQ
+                </span>
+              ) : eqState.enabled ? (
                 <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                   <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
                   10-BAND EQ AKTIF
@@ -353,12 +374,26 @@ export function YoutubeEq({
               )}
             </div>
             <p className="text-[11px] text-zinc-400">
-              Kustomisasi bass boost, frekuensi 10-band &amp; audio visualizer YouTube
+              {isAndroid
+                ? "Atur 10-band frekuensi langsung ke DSP suara Android — tanpa diblokir YouTube"
+                : "Kustomisasi bass boost, frekuensi 10-band & audio visualizer YouTube"}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Tombol Buka Panel HP jika di Android */}
+          {isAndroid && (
+            <button
+              onClick={handleOpenSystemPanel}
+              title="Buka Panel Equalizer Bawaan HP (Dolby Atmos / SoundAlive / Mi Sound)"
+              className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-600/20 px-2.5 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-600/30 transition cursor-pointer"
+            >
+              <Settings className="size-3.5 text-blue-400" />
+              <span>Panel HP</span>
+            </button>
+          )}
+
           {/* Master Power / Bypass */}
           <button
             onClick={handleToggleEnable}
