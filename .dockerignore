@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+android
+public
+src
+docs
+.vscode
+.agents
+.gemini
