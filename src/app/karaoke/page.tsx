@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
+  LogOut,
   Maximize,
   Mic2,
   Minimize,
@@ -15,6 +16,7 @@ import {
   Search,
   Sliders,
   Upload,
+  X,
 } from "lucide-react";
 import { KaraokePlayer, type KaraokePlayerHandle } from "@/components/karaoke-player";
 import { LyricsPanel, type LyricTextSize, type LyricTheme } from "@/components/lyrics-panel";
@@ -343,20 +345,47 @@ function KaraokeInner() {
     }
   };
 
+  const handleExitKaraoke = useCallback(() => {
+    try {
+      playerRef.current?.pause();
+    } catch {}
+    setVideo(null);
+    setLines([]);
+    setLyricId(null);
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/");
+    }
+  }, [router]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <section className="overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-violet-700/40 via-fuchsia-700/20 to-pink-600/20 p-6 md:p-8">
-        <div className="flex items-center gap-3">
-          <span className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500">
-            <Mic2 className="size-6 text-white" aria-hidden />
-          </span>
-          <h1 className="text-2xl font-extrabold text-white md:text-3xl">
-            Karaoke{" "}
-            <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-pink-300 bg-clip-text text-transparent">
-              MusikKu
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500">
+              <Mic2 className="size-6 text-white" aria-hidden />
             </span>
-          </h1>
+            <div>
+              <h1 className="text-2xl font-extrabold text-white md:text-3xl">
+                Karaoke{" "}
+                <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-pink-300 bg-clip-text text-transparent">
+                  MusikKu
+                </span>
+              </h1>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleExitKaraoke}
+            className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20 hover:border-white/20 transition shadow-sm cursor-pointer"
+            title="Keluar dari mode karaoke dan kembali"
+          >
+            <ArrowLeft className="size-4" aria-hidden />
+            <span>Keluar Karaoke</span>
+          </button>
         </div>
         <p className="mt-2 max-w-2xl text-sm text-zinc-300">
           Bernyanyi mengikuti lirik tersinkron per baris di atas player resmi YouTube.
@@ -408,37 +437,51 @@ function KaraokeInner() {
       {/* Stage karaoke */}
       {video ? (
         <div ref={stageRef} className="space-y-4 rounded-3xl bg-charcoal p-3 md:p-4">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
             <button
+              type="button"
+              onClick={handleExitKaraoke}
+              className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-600/15 px-3 py-2 text-xs font-bold text-red-200 hover:bg-red-600/25 hover:border-red-500/40 transition shadow-sm cursor-pointer"
+              title="Keluar dari mode karaoke dan kembali"
+            >
+              <LogOut className="size-4" aria-hidden />
+              <span>Keluar Karaoke</span>
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setVideo(null);
                 setLines([]);
                 setLyricId(null);
               }}
-              className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-white/15 hover:text-white transition cursor-pointer"
+              title="Kembali ke daftar pencarian lagu karaoke"
             >
-              <ArrowLeft className="size-4" aria-hidden /> Mode musik biasa
+              <Music2 className="size-4" aria-hidden />
+              <span>Ganti Lagu</span>
             </button>
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{video.title}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white px-1">{video.title}</span>
 
             {/* Buka di Studio DAW Button */}
             <button
+              type="button"
               onClick={handleOpenInStudio}
               title="Buka lirik lagu ini di MusikKu Studio DAW untuk rekaman vokal multitrack dan mixing profesional"
-              className="flex items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-gradient-to-r from-violet-600/30 to-fuchsia-600/30 px-3 py-2 text-xs font-bold text-fuchsia-200 hover:bg-fuchsia-600/40 transition shadow-sm"
+              className="flex items-center gap-1.5 rounded-xl border border-fuchsia-500/40 bg-gradient-to-r from-violet-600/30 to-fuchsia-600/30 px-3 py-2 text-xs font-bold text-fuchsia-200 hover:bg-fuchsia-600/40 transition shadow-sm cursor-pointer"
             >
               <Sliders className="size-4 text-fuchsia-300" aria-hidden />
-              <span>Buka di Studio DAW</span>
+              <span className="hidden sm:inline">Buka di Studio DAW</span>
             </button>
 
             <button
+              type="button"
               onClick={toggleFullscreen}
               aria-label={isFullscreen ? "Keluar layar penuh" : "Layar penuh area karaoke"}
               aria-pressed={isFullscreen}
-              className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"
+              className="flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15 cursor-pointer"
             >
               {isFullscreen ? <Minimize className="size-4" aria-hidden /> : <Maximize className="size-4" aria-hidden />}
-              {isFullscreen ? "Keluar" : "Penuh"}
+              {isFullscreen ? "Keluar Penuh" : "Layar Penuh"}
             </button>
           </div>
 
