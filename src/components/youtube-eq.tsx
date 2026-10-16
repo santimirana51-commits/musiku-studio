@@ -50,6 +50,7 @@ export function YoutubeEq({
   const [eqState, setEqState] = useState<YoutubeEqState>(DEFAULT_YOUTUBE_EQ_STATE);
   const [isTabConnected, setIsTabConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isMutedOutput, setIsMutedOutput] = useState(false);
   const [directState, setDirectState] = useState<DirectPlayerState>("idle");
   const [isAndroid, setIsAndroid] = useState(false);
 
@@ -414,6 +415,31 @@ export function YoutubeEq({
               <span className="sm:hidden">
                 {isTabConnected ? "Tab ✓" : "Tab Audio"}
               </span>
+            </button>
+          )}
+
+          {/* Tombol Anti-Gema jika terjadi double sound di perangkat pengguna */}
+          {isTabConnected && (
+            <button
+              onClick={() => {
+                const nextVal = !isMutedOutput;
+                setIsMutedOutput(nextVal);
+                youtubeEqEngineSingleton.setOutputMuted(nextVal);
+                toast(
+                  nextVal
+                    ? "Mode Anti-Gema Aktif: Output Web Audio dibisukan (hanya suara asli + visualizer aktif)."
+                    : "Output Web Audio EQ diaktifkan ke speaker.",
+                  "info"
+                );
+              }}
+              title="Aktifkan jika browser Anda memutar suara ganda / bergema"
+              className={`flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                isMutedOutput
+                  ? "border-amber-500/40 bg-amber-500/20 text-amber-200"
+                  : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
+              }`}
+            >
+              <span>{isMutedOutput ? "🔇 Anti-Gema: On" : "🔊 Anti-Gema: Off"}</span>
             </button>
           )}
 

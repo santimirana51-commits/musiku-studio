@@ -168,6 +168,8 @@ export class YoutubeEqEngine {
   private preampGain: GainNode | null = null;
   private filters: BiquadFilterNode[] = [];
   private analyser: AnalyserNode | null = null;
+  private outputGain: GainNode | null = null;
+  private isOutputMuted = false;
   private isConnected = false;
   private onStateChangeCb?: (connected: boolean) => void;
 
@@ -177,6 +179,17 @@ export class YoutubeEqEngine {
 
   public getIsConnected(): boolean {
     return this.isConnected;
+  }
+
+  public getIsOutputMuted(): boolean {
+    return this.isOutputMuted;
+  }
+
+  public setOutputMuted(muted: boolean): void {
+    this.isOutputMuted = muted;
+    if (this.outputGain && this.ctx) {
+      this.outputGain.gain.setValueAtTime(muted ? 0 : 1, this.ctx.currentTime);
+    }
   }
 
   public async connectTabAudio(initialGains: number[], preampDb = 0): Promise<boolean> {
@@ -195,18 +208,24 @@ export class YoutubeEqEngine {
 
     try {
       let stream: MediaStream;
+      const audioConstraints = {
+        suppressLocalAudioPlayback: true,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      } as MediaTrackConstraints;
+
       try {
-        // Tanpa suppressLocalAudioPlayback agar PulseAudio / PipeWire Linux tidak membisukan sink tab
+        // suppressLocalAudioPlayback: true adalah kunci mutlak untuk mencegah gema/echo!
+        // Constraint resmi W3C ini memerintahkan browser untuk membisukan audio lokal bawaan tab,
+        // sehingga pengguna HANYA mendengar satu aliran audio yang sudah difilter oleh Equalizer 10-Band.
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+          audio: audioConstraints,
           preferCurrentTab: true,
           selfBrowserSurface: "include",
-        } as DisplayMediaStreamOptions);
+          systemAudio: "include",
+        } as MediaStreamConstraints & { preferCurrentTab?: boolean; selfBrowserSurface?: string; systemAudio?: string });
       } catch (err: unknown) {
         const e = err as { name?: string };
         if (e?.name === "NotAllowedError") {
@@ -216,13 +235,16 @@ export class YoutubeEqEngine {
         // Fallback untuk browser yang menolak constraint Chromium-spesifik
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+          audio: audioConstraints,
         });
       }
+
+      // Hentikan trek video segera agar tidak membebani CPU dan RAM karena kita hanya membutuhkan audio
+      stream.getVideoTracks().forEach((vt) => {
+        try {
+          vt.stop();
+        } catch {}
+      });
 
       const audioTracks = stream.getAudioTracks();
       if (audioTracks.length === 0) {
@@ -232,6 +254,14 @@ export class YoutubeEqEngine {
           "Tidak ada trek audio yang terdeteksi. Pastikan mencentang pilihan 'Bagikan audio tab' (Also share tab audio) saat memilih tab."
         );
       }
+
+      // Terapkan suppressLocalAudioPlayback langsung ke track jika didukung oleh browser
+      try {
+        if (typeof audioTracks[0].applyConstraints === "function") {
+          // @ts-expect-error Chromium specific constraint
+          await audioTracks[0].applyConstraints({ suppressLocalAudioPlayback: true });
+        }
+      } catch {}
 
       this.disconnect();
       this.ctx = ctx;
@@ -253,6 +283,10 @@ export class YoutubeEqEngine {
       this.analyser.fftSize = 128;
       this.analyser.smoothingTimeConstant = 0.8;
 
+      // Output Gain Node (untuk kontrol anti-gema & volume hasil filter)
+      this.outputGain = this.ctx.createGain();
+      this.outputGain.gain.value = this.isOutputMuted ? 0 : 1.0;
+
       // 10-Band Biquad Filters (peaking EQ)
       this.filters = YOUTUBE_EQ_10_BANDS.map((band, i) => {
         const filter = this.ctx!.createBiquadFilter();
@@ -263,7 +297,7 @@ export class YoutubeEqEngine {
         return filter;
       });
 
-      // Chain audio: Source -> Preamp -> Filter 0 -> Filter 1 ... -> Filter 9 -> Analyser -> Destination
+      // Chain audio: Source -> Preamp -> Filter 0 -> Filter 1 ... -> Filter 9 -> Analyser -> OutputGain -> Destination
       let lastNode: AudioNode = this.sourceNode;
       lastNode.connect(this.preampGain);
       lastNode = this.preampGain;
@@ -274,7 +308,8 @@ export class YoutubeEqEngine {
       }
 
       lastNode.connect(this.analyser);
-      this.analyser.connect(this.ctx.destination);
+      this.analyser.connect(this.outputGain);
+      this.outputGain.connect(this.ctx.destination);
 
       audioTracks[0].onended = () => {
         this.disconnect();
@@ -329,6 +364,7 @@ export class YoutubeEqEngine {
     this.preampGain = null;
     this.filters = [];
     this.analyser = null;
+    this.outputGain = null;
     if (this.isConnected) {
       this.isConnected = false;
       this.onStateChangeCb?.(false);
