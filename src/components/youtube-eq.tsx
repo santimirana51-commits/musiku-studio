@@ -345,7 +345,7 @@ export function YoutubeEq({
 
   return (
     <div
-      className={`rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-md transition-all shadow-xl ${className}`}
+      className={`w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-md transition-all shadow-xl ${className}`}
     >
       {/* Header Bar */}
       <div className="flex items-center justify-between gap-2 p-3 sm:px-5">
@@ -466,7 +466,7 @@ export function YoutubeEq({
 
       {/* Expanded Equalizer Body */}
       {isOpen && (
-        <div className="border-t border-white/10 p-3 sm:p-5 space-y-3.5 animate-in fade-in duration-200">
+        <div className="w-full max-w-full min-w-0 overflow-hidden border-t border-white/10 p-3 sm:p-5 space-y-3.5 animate-in fade-in duration-200">
           {!isTabConnected && !isAndroid && directState !== "playing" && (
             <div className="hidden md:flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-violet-500/30 bg-violet-950/30 p-3 text-xs text-zinc-300">
               <div className="flex items-center gap-2 min-w-0">
@@ -486,7 +486,7 @@ export function YoutubeEq({
           )}
 
           {/* Real-time Spectrum Visualizer */}
-          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/60 p-2.5 sm:p-3 flex flex-col justify-between h-20 sm:h-28 w-full">
+          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/60 p-2.5 sm:p-3 flex flex-col justify-between h-20 sm:h-28 w-full max-w-full min-w-0">
             <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-zinc-400">
               <span className="flex items-center gap-1 font-bold">
                 <Sparkles className="size-3 text-fuchsia-400" />
@@ -500,12 +500,12 @@ export function YoutubeEq({
               ref={canvasRef}
               width={800}
               height={70}
-              className="w-full h-12 sm:h-16 rounded mt-1"
+              className="w-full max-w-full h-12 sm:h-16 rounded mt-1"
             />
           </div>
 
           {/* Preset Buttons: Horizontal Swipeable on Mobile, Wrap on Desktop */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 w-full max-w-full min-w-0">
             <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
               <span className="flex items-center gap-1.5">
                 <Volume2 className="size-3.5 text-violet-400" />
@@ -523,7 +523,7 @@ export function YoutubeEq({
               </button>
             </div>
 
-            <div className="flex gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar sm:flex-wrap">
+            <div className="flex gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar sm:flex-wrap w-full max-w-full min-w-0 touch-pan-x overscroll-contain">
               {YOUTUBE_EQ_PRESETS.map((p) => {
                 const isSelected = eqState.preset === p.id;
                 return (
@@ -544,13 +544,13 @@ export function YoutubeEq({
           </div>
 
           {/* 10-Band Sliders: Horizontal Swipeable on Mobile, 10 Columns on Desktop */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 w-full max-w-full min-w-0">
             <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
               <span className="text-[10px] sm:text-xs">FREKUENSI 10-BAND (-12 dB s/d +12 dB)</span>
               <span className="text-[9px] sm:text-[11px] text-zinc-500">Klik 2x slider untuk 0 dB</span>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar sm:grid sm:grid-cols-10">
+            <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar sm:grid sm:grid-cols-10 w-full max-w-full min-w-0 touch-pan-x overscroll-contain">
               {YOUTUBE_EQ_10_BANDS.map((band, idx) => {
                 const gain = eqState.gains10[idx] ?? 0;
                 return (

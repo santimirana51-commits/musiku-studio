@@ -84,8 +84,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <>
           <div className="flex min-h-screen">
             <Sidebar collapsed={isSidebarCollapsed} onToggleCollapse={toggleSidebar} />
-            <main className="min-w-0 flex-1 pb-36 md:pb-28">
-              <div className="mx-auto max-w-6xl px-4 pt-4 md:px-8">
+            <main className="min-w-0 max-w-full flex-1 pb-36 md:pb-28 overflow-x-hidden">
+              <div className="mx-auto max-w-6xl px-4 pt-4 md:px-8 w-full min-w-0 max-w-full">
                 <header className="mb-4 flex items-center justify-end">
                   <AuthHeader />
                 </header>

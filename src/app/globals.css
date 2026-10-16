@@ -5,6 +5,11 @@
 :root {
   color-scheme: dark;
 }
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body {
   background: #0f0f14;
   color: #f4f4f5;

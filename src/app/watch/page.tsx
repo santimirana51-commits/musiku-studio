@@ -46,8 +46,8 @@ function WatchInner() {
   if (!id) return <EmptyState title="Tidak ada video dipilih" hint="Cari lagu lalu tekan Putar untuk menonton di sini." />;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-      <div className="space-y-4">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] min-w-0 max-w-full">
+      <div className="space-y-4 min-w-0 max-w-full">
         <YouTubeEmbed />
         <YoutubeEq defaultExpanded={false} videoId={id} />
         {error && (
@@ -78,7 +78,7 @@ function WatchInner() {
           </div>
         )}
       </div>
-      <aside className="space-y-3" aria-label="Antrean dan terkait">
+      <aside className="space-y-3 min-w-0 max-w-full" aria-label="Antrean dan terkait">
         <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-400">Berikutnya</h2>
         {player.queue.length > 0 ? (
           player.queue.slice(0, 10).map((q) => <VideoCard key={q.videoId} video={q} layout="list" />)
