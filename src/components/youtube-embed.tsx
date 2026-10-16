@@ -38,6 +38,8 @@ export function YouTubeEmbed() {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const videoId = current?.videoId;
+  const streamRetryCountRef = useRef(0);
+  const streamRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isEqSync, setIsEqSync] = useState(true);
   const isEqSyncRef = useRef(true);
@@ -135,14 +137,43 @@ export function YouTubeEmbed() {
     return () => window.removeEventListener(EQ_SYNC_EVENT, handleSyncChange);
   }, [videoId]);
 
-  // Tangani fallback audio jika stream langsung dibatasi
+  // Tangani fallback audio jika stream langsung dibatasi + retry otomatis
   useEffect(() => {
     return directStreamPlayerSingleton.subscribe({
-      onError: () => {
+      onError: (errMsg) => {
+        // Pastikan iframe YouTube bersuara sebagai fallback
         syncAudioMute();
+        const vid = videoId;
+        if (!vid || !isEqSyncRef.current) return;
+        // Retry otomatis maksimal 2 kali dengan delay 3 detik
+        if (streamRetryCountRef.current < 2) {
+          streamRetryCountRef.current += 1;
+          if (streamRetryTimerRef.current) clearTimeout(streamRetryTimerRef.current);
+          streamRetryTimerRef.current = setTimeout(() => {
+            if (!isEqSyncRef.current) return;
+            directStreamPlayerSingleton.clearFailedVideo(vid);
+            const p = playerRef.current;
+            const t = p?.getCurrentTime?.() || 0;
+            void directStreamPlayerSingleton.loadAndPlay(vid, t);
+          }, 3000);
+        } else {
+          // Setelah 2x retry gagal, tampilkan toast info dan biarkan iframe YouTube bersuara
+          console.warn("[EQ] Direct stream gagal setelah 2x retry:", errMsg);
+        }
       },
     });
-  }, []);
+  }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset retry counter dan hapus blacklist saat ganti video agar EQ bisa dicoba ulang
+  useEffect(() => {
+    if (!videoId) return;
+    streamRetryCountRef.current = 0;
+    if (streamRetryTimerRef.current) {
+      clearTimeout(streamRetryTimerRef.current);
+      streamRetryTimerRef.current = null;
+    }
+    directStreamPlayerSingleton.clearFailedVideo(videoId);
+  }, [videoId]);
 
   // Satu instance per video: dibuat dengan videoId final (termasuk posisi
   // lanjutan), dihancurkan saat ganti video/unmount.
@@ -169,7 +200,7 @@ export function YouTubeEmbed() {
           playsinline: 1,
           autoplay: 1,
           enablejsapi: 1,
-          origin: typeof window !== "undefined" ? window.location.origin : undefined,
+          // origin omitted to let YouTube iframe handle postMessage origin correctly
           mute: 0,
           ...(resumeSec ? { start: resumeSec } : {}),
         },

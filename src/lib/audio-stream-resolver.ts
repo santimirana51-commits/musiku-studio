@@ -14,17 +14,58 @@ export interface CachedStream {
   expiresAt: number;
 }
 
-// In-memory cache stream audio
+// In-memory cache stream audio dengan batas ukuran untuk cegah memory leak
 export const streamUrlCache = new Map<string, CachedStream>();
 export const DEFAULT_CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 jam default
+const MAX_CACHE_SIZE = 500;
 
-export const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-  "Access-Control-Allow-Headers": "Range, Content-Type, Accept, Origin, Authorization, X-Requested-With",
-  "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Type",
-  "Access-Control-Max-Age": "86400",
-};
+/** Evict entry terlama jika cache melebihi batas */
+function evictOldestCacheEntry(): void {
+  let oldestKey: string | null = null;
+  let oldestExpiry = Infinity;
+  Array.from(streamUrlCache.entries()).forEach(([key, val]) => {
+    if (val.expiresAt < oldestExpiry) {
+      oldestExpiry = val.expiresAt;
+      oldestKey = key;
+    }
+  });
+  if (oldestKey) streamUrlCache.delete(oldestKey);
+}
+
+/** Set cache dengan batas ukuran otomatis */
+export function setCacheEntry(videoId: string, entry: CachedStream): void {
+  if (streamUrlCache.size >= MAX_CACHE_SIZE) {
+    evictOldestCacheEntry();
+  }
+  streamUrlCache.set(videoId, entry);
+}
+
+/**
+ * Bangun CORS headers.
+ * Jika APP_URL dikonfigurasi di env, gunakan domain itu sebagai allowed origin.
+ * Fallback ke '*' agar dev lokal tetap bisa berjalan.
+ */
+export function buildCorsHeaders(requestOrigin?: string | null): Record<string, string> {
+  const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim() || "*";
+  // Jika allowedOrigin bukan wildcard, cocokkan dengan origin request
+  const origin =
+    allowedOrigin === "*"
+      ? "*"
+      : requestOrigin && requestOrigin === allowedOrigin
+      ? requestOrigin
+      : allowedOrigin;
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Content-Type, Accept, Origin, Authorization, X-Requested-With",
+    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Type",
+    "Access-Control-Max-Age": "86400",
+    ...(origin !== "*" ? { "Vary": "Origin" } : {}),
+  };
+}
+
+// Header CORS statis untuk backward-compat (dipakai komponen lain)
+export const CORS_HEADERS: Record<string, string> = buildCorsHeaders();
 
 export function findYtDlpBinary(): string {
   if (process.env.YT_DLP_PATH) {
@@ -32,19 +73,19 @@ export function findYtDlpBinary(): string {
       if (fs.existsSync(process.env.YT_DLP_PATH)) return process.env.YT_DLP_PATH;
     } catch {}
   }
+  // Path standar lintas platform (tidak ada path developer hardcoded)
   const commonPaths = [
-    "/home/miran/.local/bin/yt-dlp",
     "/usr/local/bin/yt-dlp",
     "/usr/bin/yt-dlp",
-    "yt-dlp",
+    "/opt/homebrew/bin/yt-dlp", // macOS Homebrew
+    "/snap/bin/yt-dlp",          // Ubuntu Snap
   ];
   for (const p of commonPaths) {
-    if (p === "yt-dlp") return p;
     try {
       if (fs.existsSync(p)) return p;
     } catch {}
   }
-  return "yt-dlp";
+  return "yt-dlp"; // fallback: cari di PATH sistem
 }
 
 /**
@@ -336,7 +377,7 @@ export async function resolveDirectAudioUrl(
 
   if (resolvedUrl) {
     const expiresAt = extractExpiryMs(resolvedUrl);
-    streamUrlCache.set(videoId, { url: resolvedUrl, expiresAt });
+    setCacheEntry(videoId, { url: resolvedUrl, expiresAt });
     return resolvedUrl;
   }
 

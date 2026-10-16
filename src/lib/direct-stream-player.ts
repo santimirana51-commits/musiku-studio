@@ -145,8 +145,13 @@ export class DirectStreamPlayer {
     });
     this.audio.addEventListener("error", () => {
       const msg = this.audio?.error?.message || "Gagal memutar aliran audio.";
-      if (this.currentVideoId) {
-        this.failedVideoIds.add(this.currentVideoId);
+      const failedId = this.currentVideoId;
+      if (failedId) {
+        this.failedVideoIds.add(failedId);
+        // Hapus dari blacklist setelah 30 detik agar retry otomatis bisa bekerja
+        setTimeout(() => {
+          this.failedVideoIds.delete(failedId);
+        }, 30_000);
       }
       this.setState("error");
       this.listeners.forEach((l) => l.onError?.(msg));

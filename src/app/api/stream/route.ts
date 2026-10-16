@@ -3,10 +3,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  CORS_HEADERS,
+  buildCorsHeaders,
   resolveDirectAudioUrl,
   streamUrlCache,
 } from "@/lib/audio-stream-resolver";
+import { rateLimit, clientKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,12 +15,29 @@ export const dynamic = "force-dynamic";
 async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Response> {
   const { searchParams } = new URL(req.url);
   const videoId = searchParams.get("v");
+  const requestOrigin = req.headers.get("origin");
+  const corsHeaders = buildCorsHeaders(requestOrigin);
 
   // Validasi ID video YouTube (11 karakter alphanumeric, underscore, hyphen)
   if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
     return NextResponse.json(
       { error: "Parameter videoId ('v') tidak valid." },
-      { status: 400, headers: CORS_HEADERS }
+      { status: 400, headers: corsHeaders }
+    );
+  }
+
+  // Rate limiting: maks 20 request per IP per menit untuk endpoint stream
+  const key = `stream:${clientKey(req)}`;
+  if (!rateLimit(key, 20, 60_000)) {
+    return NextResponse.json(
+      { error: "Terlalu banyak permintaan. Coba lagi dalam beberapa saat." },
+      {
+        status: 429,
+        headers: {
+          ...corsHeaders,
+          "Retry-After": "60",
+        },
+      }
     );
   }
 
@@ -33,7 +51,7 @@ async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Re
     const targetUrl = `${cleanBase}/api/stream?${searchParams.toString()}`;
     return NextResponse.redirect(targetUrl, {
       status: 307,
-      headers: CORS_HEADERS,
+      headers: corsHeaders,
     });
   }
 
@@ -41,7 +59,7 @@ async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Re
   if (!directUrl) {
     return NextResponse.json(
       { error: "Gagal mengekstrak aliran audio untuk video ini." },
-      { status: 502, headers: CORS_HEADERS }
+      { status: 502, headers: corsHeaders }
     );
   }
 
@@ -106,20 +124,20 @@ async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Re
       streamUrlCache.delete(videoId);
       return NextResponse.json(
         { error: "Koneksi ke aliran audio timeout atau tidak dapat dijangkau." },
-        { status: 504, headers: CORS_HEADERS }
+        { status: 504, headers: corsHeaders }
       );
     }
 
     if (!upstreamRes.ok && upstreamRes.status !== 206) {
       return NextResponse.json(
         { error: "Aliran audio dari sumber tidak tersedia." },
-        { status: upstreamRes.status, headers: CORS_HEADERS }
+        { status: upstreamRes.status, headers: corsHeaders }
       );
     }
 
     // Bangun response headers dengan dukungan CORS dan Range audio lengkap
     const responseHeaders = new Headers();
-    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    for (const [k, v] of Object.entries(corsHeaders)) {
       responseHeaders.set(k, v);
     }
 
@@ -143,7 +161,7 @@ async function handleStreamRequest(req: NextRequest, isHead = false): Promise<Re
     streamUrlCache.delete(videoId);
     return NextResponse.json(
       { error: "Gagal mengalirkan audio." },
-      { status: 502, headers: CORS_HEADERS }
+      { status: 502, headers: corsHeaders }
     );
   }
 }
@@ -156,9 +174,10 @@ export async function HEAD(req: NextRequest) {
   return handleStreamRequest(req, true);
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req: NextRequest) {
+  const requestOrigin = req.headers.get("origin");
   return new Response(null, {
     status: 204,
-    headers: CORS_HEADERS,
+    headers: buildCorsHeaders(requestOrigin),
   });
 }

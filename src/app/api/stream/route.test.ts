@@ -9,7 +9,8 @@ describe("/api/stream", () => {
 
   describe("OPTIONS /api/stream", () => {
     it("returns 204 with comprehensive CORS and Range headers for Web Audio API", async () => {
-      const res = await OPTIONS();
+      const req = new NextRequest("http://localhost:3000/api/stream", { method: "OPTIONS" });
+      const res = await OPTIONS(req);
       expect(res.status).toBe(204);
       expect(res.headers.get("access-control-allow-origin")).toBe("*");
       expect(res.headers.get("access-control-allow-methods")).toContain("GET");
