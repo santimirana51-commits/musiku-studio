@@ -193,8 +193,12 @@ export class YoutubeEqEngine {
   }
 
   public async connectTabAudio(initialGains: number[], preampDb = 0): Promise<boolean> {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
-      throw new Error("Browser Anda tidak mendukung penangkapan audio tab (getDisplayMedia).");
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getDisplayMedia ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    ) {
+      throw new Error("Penangkapan audio tab hanya didukung pada peramban PC/Desktop (Chrome, Edge, Firefox).");
     }
 
     // Buat AudioContext sinkron di awal agar izin gestur klik pengguna (User Activation) aktif
@@ -228,15 +232,20 @@ export class YoutubeEqEngine {
         } as MediaStreamConstraints & { preferCurrentTab?: boolean; selfBrowserSurface?: string; systemAudio?: string });
       } catch (err: unknown) {
         const e = err as { name?: string };
-        if (e?.name === "NotAllowedError") {
+        if (e?.name === "NotAllowedError" || e?.name === "SecurityError") {
           try { void ctx.close(); } catch {}
           throw err;
         }
-        // Fallback untuk browser yang menolak constraint Chromium-spesifik
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: audioConstraints,
-        });
+        try {
+          // Fallback untuk browser yang menolak constraint Chromium-spesifik
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: audioConstraints,
+          });
+        } catch (fallbackErr) {
+          try { void ctx.close(); } catch {}
+          throw fallbackErr;
+        }
       }
 
       // Hentikan trek video segera agar tidak membebani CPU dan RAM karena kita hanya membutuhkan audio

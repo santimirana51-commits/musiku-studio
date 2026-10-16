@@ -16,9 +16,9 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Permissions-Policy",
-            // microphone=(self): mode karaoke butuh getUserMedia atas gestur
-            // pengguna. Kamera & geolokasi tetap dimatikan (tidak dipakai).
-            value: "camera=(), microphone=(self), geolocation=()",
+            // microphone=(self): mode karaoke butuh getUserMedia atas gestur pengguna.
+            // camera=(self), display-capture=(self): Web Audio tab capture di desktop.
+            value: "camera=(self), display-capture=(self), microphone=(self), geolocation=()",
           },
         ],
       },
