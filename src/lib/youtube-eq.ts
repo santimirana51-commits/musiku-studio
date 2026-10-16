@@ -237,10 +237,10 @@ export class YoutubeEqEngine {
           throw err;
         }
         try {
-          // Fallback untuk browser yang menolak constraint Chromium-spesifik
+          // Fallback sederhana jika browser menolak opsi Chromium-spesifik
           stream = await navigator.mediaDevices.getDisplayMedia({
             video: true,
-            audio: audioConstraints,
+            audio: true,
           });
         } catch (fallbackErr) {
           try { void ctx.close(); } catch {}
@@ -374,6 +374,7 @@ export class YoutubeEqEngine {
     this.filters = [];
     this.analyser = null;
     this.outputGain = null;
+    this.isOutputMuted = false;
     if (this.isConnected) {
       this.isConnected = false;
       this.onStateChangeCb?.(false);

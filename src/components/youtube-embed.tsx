@@ -6,7 +6,13 @@ import { usePlayer } from "./player-context";
 import { loadYouTubeIframeApi, type YTPlayer } from "@/lib/youtube-iframe";
 import { directStreamPlayerSingleton } from "@/lib/direct-stream-player";
 import { loadEqSettings } from "@/lib/karaoke/equalizer";
-import { getGlobalEqSync, setGlobalEqSync, EQ_SYNC_EVENT, EQ_SYNC_KEY } from "@/lib/youtube-eq";
+import {
+  getGlobalEqSync,
+  setGlobalEqSync,
+  EQ_SYNC_EVENT,
+  EQ_SYNC_KEY,
+  youtubeEqEngineSingleton,
+} from "@/lib/youtube-eq";
 import { useToast } from "./toast";
 import { Sliders, Volume2 } from "lucide-react";
 
@@ -54,33 +60,60 @@ export function YouTubeEmbed() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
+  // Sinkronisasi status audio: iframe YouTube hanya dibisukan jika directStreamPlayer aktif memutar suara
+  // dan bukan mode Tab Audio. Di luar itu (Bypass, Tab Audio aktif, direct stream loading/error),
+  // iframe YouTube WAJIB bersuara (unMute, volume 100) agar suara terdengar jelas!
+  const syncAudioMute = (overridePlayer?: YTPlayer | null) => {
+    const p = overridePlayer || playerRef.current;
+    if (!p) return;
+    const isDirectPlaying = directStreamPlayerSingleton.getState() === "playing";
+    const isTabConnected = youtubeEqEngineSingleton.getIsConnected();
+    const shouldMuteIframe = isEqSyncRef.current && isDirectPlaying && !isTabConnected;
+
+    try {
+      if (shouldMuteIframe) {
+        p.mute?.();
+        p.setVolume?.(0);
+      } else {
+        p.unMute?.();
+        p.setVolume?.(100);
+      }
+    } catch {}
+  };
+
+  // Dengarkan perubahan status DirectStreamPlayer dan Tab Audio Engine
+  useEffect(() => {
+    const unsubDirect = directStreamPlayerSingleton.subscribe({
+      onState: () => syncAudioMute(),
+      onError: () => syncAudioMute(),
+    });
+    youtubeEqEngineSingleton.onConnectionChange(() => {
+      syncAudioMute();
+    });
+    return () => {
+      unsubDirect();
+    };
+  }, []);
+
   // Sinkronisasi event jika tombol Bypass diubah dari komponen lain (seperti YoutubeEq)
   useEffect(() => {
     const handleSyncChange = (e: Event) => {
       const nextVal = (e as CustomEvent<boolean>).detail;
-      if (typeof nextVal === "boolean" && nextVal !== isEqSyncRef.current) {
+      if (typeof nextVal === "boolean") {
         setIsEqSync(nextVal);
         isEqSyncRef.current = nextVal;
         const p = playerRef.current;
         if (nextVal) {
-          try {
-            p?.mute?.();
-            p?.setVolume?.(0);
+          if (!youtubeEqEngineSingleton.getIsConnected() && videoId) {
             const t = p?.getCurrentTime?.() || 0;
             const eq = loadEqSettings();
             directStreamPlayerSingleton.applyGains(eq.gains, true);
-            if (videoId) {
-              p?.playVideo?.();
-              void directStreamPlayerSingleton.loadAndPlay(videoId, t);
-            }
-          } catch {}
+            void directStreamPlayerSingleton.loadAndPlay(videoId, t);
+          }
         } else {
-          try {
-            directStreamPlayerSingleton.pause();
-            p?.unMute?.();
-            p?.setVolume?.(100);
-          } catch {}
+          directStreamPlayerSingleton.pause();
         }
+        syncAudioMute();
       }
     };
     window.addEventListener(EQ_SYNC_EVENT, handleSyncChange);
@@ -91,22 +124,10 @@ export function YouTubeEmbed() {
   useEffect(() => {
     return directStreamPlayerSingleton.subscribe({
       onError: () => {
-        if (isEqSyncRef.current) {
-          setIsEqSync(false);
-          isEqSyncRef.current = false;
-          setGlobalEqSync(false);
-          try {
-            playerRef.current?.unMute?.();
-            playerRef.current?.setVolume?.(100);
-          } catch {}
-          toast(
-            "Aliran audio langsung dibatasi di cloud hosting. Audio dialihkan otomatis ke pemutar resmi YouTube.",
-            "info"
-          );
-        }
+        syncAudioMute();
       },
     });
-  }, [toast]);
+  }, []);
 
   // Satu instance per video: dibuat dengan videoId final (termasuk posisi
   // lanjutan), dihancurkan saat ganti video/unmount.
@@ -134,35 +155,28 @@ export function YouTubeEmbed() {
           autoplay: 1,
           enablejsapi: 1,
           origin: typeof window !== "undefined" ? window.location.origin : undefined,
-          // PENTING: Inisialisasi mute: 1 jika EQ aktif agar YouTube TIDAK bocor audio sama sekali
-          ...(isEqSyncRef.current ? { mute: 1 } : { mute: 0 }),
+          mute: 0,
           ...(resumeSec ? { start: resumeSec } : {}),
         },
         events: {
           onReady: (e) => {
             try {
-              if (isEqSyncRef.current) {
-                // Pastikan iframe YouTube 100% senyap tanpa audio ganda
-                e.target.mute?.();
-                e.target.setVolume?.(0);
+              playerRef.current = e.target;
+              e.target.playVideo?.();
+              syncAudioMute(e.target);
+              if (isEqSyncRef.current && !youtubeEqEngineSingleton.getIsConnected()) {
                 const eq = loadEqSettings();
                 directStreamPlayerSingleton.applyGains(eq.gains, true);
                 void directStreamPlayerSingleton.loadAndPlay(videoId, resumeSec || 0);
-              } else {
-                directStreamPlayerSingleton.pause();
-                e.target.unMute?.();
-                e.target.setVolume?.(100);
               }
-              e.target.playVideo?.();
             } catch {}
           },
           onStateChange: (e) => {
             if (e.data === 1) {
               // Video Playing
               setStatus("playing");
-              if (isEqSyncRef.current) {
-                e.target.mute?.();
-                e.target.setVolume?.(0);
+              syncAudioMute(e.target);
+              if (isEqSyncRef.current && !youtubeEqEngineSingleton.getIsConnected()) {
                 const curr = e.target.getCurrentTime?.();
                 if (
                   typeof curr === "number" &&
@@ -173,20 +187,14 @@ export function YouTubeEmbed() {
                 void directStreamPlayerSingleton.play();
               } else {
                 directStreamPlayerSingleton.pause();
-                e.target.unMute?.();
-                e.target.setVolume?.(100);
               }
             } else if (e.data === 2) {
               // Video Paused
               setStatus("paused");
-              if (isEqSyncRef.current) {
-                directStreamPlayerSingleton.pause();
-              }
+              directStreamPlayerSingleton.pause();
             } else if (e.data === 0) {
               // Video Ended
-              if (isEqSyncRef.current) {
-                directStreamPlayerSingleton.stopAndUnload();
-              }
+              directStreamPlayerSingleton.stopAndUnload();
               next();
             }
           },
@@ -239,24 +247,27 @@ export function YouTubeEmbed() {
       const p = playerRef.current;
       if (!p) return;
       try {
+        syncAudioMute();
+
         const isYTPlaying = p.getPlayerState?.() === 1;
-        if (isEqSyncRef.current) {
-          // CEGAH BOCOR: Jika iframe tidak sengaja un-mute, bisukan seketika!
-          if (p.isMuted && !p.isMuted()) {
-            p.mute?.();
-            p.setVolume?.(0);
-          }
-          // WATCHDOG: Jika YouTube jalan tapi direct stream belum play, jalankan otomatis tanpa perlu klik manual
+        const isDirectPlaying = directStreamPlayerSingleton.getState() === "playing";
+        const isTabConnected = youtubeEqEngineSingleton.getIsConnected();
+
+        if (isEqSyncRef.current && !isTabConnected) {
+          // WATCHDOG: Jika YouTube jalan tapi direct stream belum play dan tidak error
           if (
             isYTPlaying &&
-            directStreamPlayerSingleton.getState() !== "playing" &&
+            !isDirectPlaying &&
             directStreamPlayerSingleton.getState() !== "error" &&
+            directStreamPlayerSingleton.getState() !== "loading" &&
             !directStreamPlayerSingleton.isFailedVideo(videoId) &&
             videoId
           ) {
             const ytTime = p.getCurrentTime?.() || 0;
             void directStreamPlayerSingleton.loadAndPlay(videoId, ytTime);
           }
+
+          // Sinkronisasi drift waktu
           const ytTime = p.getCurrentTime?.();
           const directTime = directStreamPlayerSingleton.getCurrentTime();
           if (typeof ytTime === "number" && directTime > 0) {
@@ -266,7 +277,7 @@ export function YouTubeEmbed() {
             }
           }
         } else {
-          // MODE BYPASS: Pastikan directStreamPlayer benar-benar dijeda agar tidak terjadi suara dobel
+          // MODE BYPASS atau TAB AUDIO: Jeda directStreamPlayer
           if (directStreamPlayerSingleton.getState() === "playing") {
             directStreamPlayerSingleton.pause();
           }
@@ -285,13 +296,11 @@ export function YouTubeEmbed() {
 
     if (nextVal) {
       try {
-        const p = playerRef.current;
-        p?.mute?.();
-        p?.setVolume?.(0);
-        const t = p?.getCurrentTime?.() || 0;
-        const eq = loadEqSettings();
-        directStreamPlayerSingleton.applyGains(eq.gains, true);
-        if (videoId) {
+        if (!youtubeEqEngineSingleton.getIsConnected() && videoId) {
+          const p = playerRef.current;
+          const t = p?.getCurrentTime?.() || 0;
+          const eq = loadEqSettings();
+          directStreamPlayerSingleton.applyGains(eq.gains, true);
           p?.playVideo?.();
           void directStreamPlayerSingleton.loadAndPlay(videoId, t);
         }
@@ -300,11 +309,10 @@ export function YouTubeEmbed() {
     } else {
       try {
         directStreamPlayerSingleton.pause();
-        playerRef.current?.unMute?.();
-        playerRef.current?.setVolume?.(100);
         toast("Bypass EQ: Memutar audio asli YouTube bawaan.", "info");
       } catch {}
     }
+    syncAudioMute();
   };
 
   if (!current) return null;

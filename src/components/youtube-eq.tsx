@@ -339,6 +339,14 @@ export function YoutubeEq({
 
     setIsConnecting(true);
     try {
+      directStreamPlayerSingleton.pause();
+      if (!eqState.enabled) {
+        const nextState = { ...eqState, enabled: true };
+        setEqState(nextState);
+        saveYoutubeEqState(nextState);
+        setGlobalEqSync(true);
+      }
+      setIsMutedOutput(false);
       toast("Pilih tab browser MusikKu/YouTube ini di jendela pop-up dan pastikan centang 'Bagikan audio tab'.", "info");
       await youtubeEqEngineSingleton.connectTabAudio(eqState.gains10, eqState.preamp);
     } catch (err: unknown) {
