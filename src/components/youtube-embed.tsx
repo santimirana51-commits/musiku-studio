@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { usePlayer } from "./player-context";
 import { loadYouTubeIframeApi, type YTPlayer } from "@/lib/youtube-iframe";
 import { directStreamPlayerSingleton } from "@/lib/direct-stream-player";
@@ -25,6 +26,7 @@ const ERROR_TEXT: Record<number, string> = {
  *  DirectStreamPlayer dan fallback audio otomatis tanpa audio dobel.
  */
 export function YouTubeEmbed() {
+  const pathname = usePathname();
   const { current, status, setStatus, setError, next, setResume, takeResume } = usePlayer();
   const { toast } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -315,50 +317,52 @@ export function YouTubeEmbed() {
         <div ref={containerRef} className="h-full w-full" />
       </div>
 
-      {/* Bar Sinkronisasi Equalizer */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 px-3 py-1.5 text-xs">
-        <div className="flex items-center gap-2">
-          <span
-            className={`flex size-2 rounded-full ${
-              isEqSync ? "bg-emerald-400 shadow-sm shadow-emerald-400 animate-pulse" : "bg-zinc-500"
-            }`}
-          />
-          <span className="font-semibold text-[11px] text-zinc-300">
-            {isEqSync ? (
-              <span className="flex items-center gap-1 text-emerald-300">
-                <Sliders className="size-3 text-emerald-400" />
-                EQ 10-Band Tersinkron (Web Audio)
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-zinc-400">
-                <Volume2 className="size-3 text-zinc-400" />
-                Audio Asli YouTube (Bypass)
-              </span>
-            )}
-          </span>
-        </div>
+      {/* Bar Sinkronisasi Equalizer (hanya di luar /watch agar tidak duplikat dengan panel utama) */}
+      {pathname !== "/watch" && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 px-3 py-1.5 text-xs">
+          <div className="flex items-center gap-2">
+            <span
+              className={`flex size-2 rounded-full ${
+                isEqSync ? "bg-emerald-400 shadow-sm shadow-emerald-400 animate-pulse" : "bg-zinc-500"
+              }`}
+            />
+            <span className="font-semibold text-[11px] text-zinc-300">
+              {isEqSync ? (
+                <span className="flex items-center gap-1 text-emerald-300">
+                  <Sliders className="size-3 text-emerald-400" />
+                  EQ 10-Band Tersinkron (Web Audio)
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-zinc-400">
+                  <Volume2 className="size-3 text-zinc-400" />
+                  Audio Asli YouTube (Bypass)
+                </span>
+              )}
+            </span>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <Link
-            href="/equalizer"
-            className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium text-zinc-400 hover:text-white transition"
-            title="Buka Halaman Equalizer untuk atur frekuensi"
-          >
-            <span>Atur EQ</span>
-          </Link>
-          <button
-            onClick={toggleEqSync}
-            className={`rounded-lg px-2.5 py-0.5 text-[11px] font-bold transition cursor-pointer ${
-              isEqSync
-                ? "border border-violet-500/40 bg-violet-600/30 text-violet-200 hover:bg-violet-600/40"
-                : "border border-white/10 bg-white/10 text-zinc-300 hover:bg-white/20"
-            }`}
-            title={isEqSync ? "Bypass: Beralih ke audio asli YouTube" : "Aktifkan Equalizer 10-Band"}
-          >
-            {isEqSync ? "Bypass EQ" : "Aktifkan EQ"}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/equalizer"
+              className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium text-zinc-400 hover:text-white transition"
+              title="Buka Halaman Equalizer untuk atur frekuensi"
+            >
+              <span>Atur EQ</span>
+            </Link>
+            <button
+              onClick={toggleEqSync}
+              className={`rounded-lg px-2.5 py-0.5 text-[11px] font-bold transition cursor-pointer ${
+                isEqSync
+                  ? "border border-violet-500/40 bg-violet-600/30 text-violet-200 hover:bg-violet-600/40"
+                  : "border border-white/10 bg-white/10 text-zinc-300 hover:bg-white/20"
+              }`}
+              title={isEqSync ? "Bypass: Beralih ke audio asli YouTube" : "Aktifkan Equalizer 10-Band"}
+            >
+              {isEqSync ? "Bypass EQ" : "Aktifkan EQ"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

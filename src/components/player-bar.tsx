@@ -9,7 +9,9 @@ export function PlayerBar() {
   const { current, status, queue, next, prev, setStatus, isExpanded, setExpanded, error } =
     usePlayer();
   const pathname = usePathname();
-  if (!current) return null;
+  // Di /watch, video penuh sudah aktif di bagian atas halaman sehingga PlayerBar disembunyikan
+  // agar tidak menimpa daftar lagu berikutnya dan navigasi bawah pada layar HP.
+  if (!current || pathname === "/watch") return null;
 
   // Mini player global: satu-satunya instance aktif di luar /watch dan /karaoke.
   // Di /watch atau /karaoke, pemutar video utama halaman yang aktif — tidak pernah

@@ -348,77 +348,72 @@ export function YoutubeEq({
       className={`rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 backdrop-blur-md transition-all shadow-xl ${className}`}
     >
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 sm:px-5">
-        <div className="flex items-center gap-3">
-          <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500 text-white shadow-md shadow-violet-500/20">
-            <Sliders className="size-5" />
+      <div className="flex items-center justify-between gap-2 p-3 sm:px-5">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="grid size-8 sm:size-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 via-fuchsia-600 to-pink-500 text-white shadow-md shadow-violet-500/20 shrink-0">
+            <Sliders className="size-4 sm:size-5" />
           </span>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm font-extrabold text-white sm:text-base">
-                YouTube EQ <span className="text-violet-400 font-mono text-xs font-normal">(Equalizer)</span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h2 className="text-xs sm:text-base font-extrabold text-white truncate">
+                YouTube EQ
               </h2>
               {isAndroid ? (
-                <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-bold text-blue-300 border border-blue-500/30 flex items-center gap-1">
-                  <Smartphone className="size-3 text-blue-400" />
-                  ANDROID HARDWARE DSP EQ
+                <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[9px] font-bold text-blue-300 border border-blue-500/30">
+                  ANDROID DSP
                 </span>
               ) : eqState.enabled ? (
-                <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                   <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
                   10-BAND EQ AKTIF
                 </span>
               ) : (
-                <span className="rounded-full bg-zinc-800/80 px-2.5 py-0.5 text-[10px] font-bold text-zinc-400 border border-white/10 flex items-center gap-1">
-                  <span className="size-1.5 rounded-full bg-zinc-500" />
-                  AUDIO ASLI YOUTUBE (BYPASS)
+                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[9px] font-bold text-zinc-400 border border-white/10">
+                  BYPASS
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-zinc-400">
+            <p className="text-[10px] text-zinc-400 hidden sm:block">
               {isAndroid
                 ? "Atur 10-band frekuensi langsung ke DSP suara Android — tanpa diblokir YouTube"
-                : "Kustomisasi bass boost, frekuensi 10-band & audio visualizer YouTube"}
+                : "Kustomisasi bass boost, frekuensi 10-band & visualizer audio"}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Tombol Buka Panel HP jika di Android */}
           {isAndroid && (
             <button
               onClick={handleOpenSystemPanel}
               title="Buka Panel Equalizer Bawaan HP (Dolby Atmos / SoundAlive / Mi Sound)"
-              className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-600/20 px-2.5 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-600/30 transition cursor-pointer"
+              className="flex items-center gap-1 rounded-xl border border-blue-500/30 bg-blue-600/20 px-2 py-1.5 text-xs font-semibold text-blue-200 hover:bg-blue-600/30 transition cursor-pointer"
             >
               <Settings className="size-3.5 text-blue-400" />
-              <span>Panel HP</span>
+              <span className="hidden sm:inline">Panel HP</span>
             </button>
           )}
 
-          {/* Tombol Sambungkan Audio Tab untuk Desktop */}
+          {/* Tombol Sambungkan Audio Tab untuk Desktop (Khusus Layar PC/Laptop) */}
           {!isAndroid && (
             <button
               onClick={handleConnectTab}
               disabled={isConnecting}
-              title="Sambungkan audio tab browser langsung ke Equalizer Web Audio tanpa perlu proxy"
-              className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+              title="Sambungkan audio tab browser langsung ke Equalizer Web Audio (Khusus Desktop/Laptop)"
+              className={`hidden md:inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                 isTabConnected
                   ? "border-emerald-500/40 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
                   : "border-fuchsia-500/30 bg-fuchsia-600/15 text-fuchsia-200 hover:bg-fuchsia-600/25"
               }`}
             >
               <Volume2 className="size-3.5 text-fuchsia-400" />
-              <span className="hidden sm:inline">
+              <span>
                 {isConnecting ? "Menghubungkan..." : isTabConnected ? "Tab Terhubung ✓" : "Sambungkan Audio Tab"}
-              </span>
-              <span className="sm:hidden">
-                {isTabConnected ? "Tab ✓" : "Tab Audio"}
               </span>
             </button>
           )}
 
-          {/* Tombol Anti-Gema jika terjadi double sound di perangkat pengguna */}
+          {/* Tombol Anti-Gema jika terjadi double sound di desktop */}
           {isTabConnected && (
             <button
               onClick={() => {
@@ -433,7 +428,7 @@ export function YoutubeEq({
                 );
               }}
               title="Aktifkan jika browser Anda memutar suara ganda / bergema"
-              className={`flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+              className={`hidden md:inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
                 isMutedOutput
                   ? "border-amber-500/40 bg-amber-500/20 text-amber-200"
                   : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
@@ -447,14 +442,14 @@ export function YoutubeEq({
           <button
             onClick={handleToggleEnable}
             title={eqState.enabled ? "Bypass Equalizer: Beralih ke audio asli YouTube" : "Aktifkan Equalizer 10-Band"}
-            className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+            className={`flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition cursor-pointer ${
               eqState.enabled
                 ? "border-violet-500/40 bg-violet-600/20 text-violet-200 hover:bg-violet-600/30 shadow-xs shadow-violet-500/30"
                 : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
             }`}
           >
             <Power className={`size-3.5 ${eqState.enabled ? "text-violet-400" : "text-zinc-500"}`} />
-            <span>{eqState.enabled ? "Bypass EQ" : "Aktifkan EQ"}</span>
+            <span>{eqState.enabled ? "Bypass" : "Aktif"}</span>
           </button>
 
           {/* Expand/Collapse Toggle */}
@@ -462,7 +457,8 @@ export function YoutubeEq({
             onClick={() => setIsOpen(!isOpen)}
             className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-zinc-300 hover:bg-white/10 hover:text-white transition cursor-pointer"
           >
-            <span>{isOpen ? "Sembunyikan" : "Buka EQ"}</span>
+            <span className="hidden sm:inline">{isOpen ? "Sembunyikan" : "Buka EQ"}</span>
+            <span className="sm:hidden">{isOpen ? "Tutup" : "EQ"}</span>
             {isOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
           </button>
         </div>
@@ -470,9 +466,9 @@ export function YoutubeEq({
 
       {/* Expanded Equalizer Body */}
       {isOpen && (
-        <div className="border-t border-white/10 p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
+        <div className="border-t border-white/10 p-3 sm:p-5 space-y-3.5 animate-in fade-in duration-200">
           {!isTabConnected && !isAndroid && directState !== "playing" && (
-            <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-violet-500/30 bg-violet-950/30 p-3 text-xs text-zinc-300">
+            <div className="hidden md:flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-violet-500/30 bg-violet-950/30 p-3 text-xs text-zinc-300">
               <div className="flex items-center gap-2 min-w-0">
                 <Info className="size-4 text-violet-400 shrink-0" />
                 <span className="text-[11px] sm:text-xs">
@@ -490,13 +486,13 @@ export function YoutubeEq({
           )}
 
           {/* Real-time Spectrum Visualizer */}
-          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/60 p-3 flex flex-col justify-between h-28 w-full">
-            <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-              <span className="flex items-center gap-1.5 font-bold">
+          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/60 p-2.5 sm:p-3 flex flex-col justify-between h-20 sm:h-28 w-full">
+            <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-mono text-zinc-400">
+              <span className="flex items-center gap-1 font-bold">
                 <Sparkles className="size-3 text-fuchsia-400" />
                 AUDIO SPECTRUM VISUALIZER
               </span>
-              <span className="text-zinc-500">
+              <span className="text-zinc-500 hidden sm:inline">
                 WEB AUDIO REAL-TIME FFT SPECTRUM
               </span>
             </div>
@@ -504,37 +500,37 @@ export function YoutubeEq({
               ref={canvasRef}
               width={800}
               height={70}
-              className="w-full h-16 rounded mt-1"
+              className="w-full h-12 sm:h-16 rounded mt-1"
             />
           </div>
 
-          {/* Preset Buttons */}
-          <div className="space-y-2">
+          {/* Preset Buttons: Horizontal Swipeable on Mobile, Wrap on Desktop */}
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
               <span className="flex items-center gap-1.5">
                 <Volume2 className="size-3.5 text-violet-400" />
-                <span>PRESET SUARA:</span>
-                <span className="text-white uppercase font-mono text-[11px] bg-white/10 px-2 py-0.5 rounded">
+                <span className="text-[11px] sm:text-xs">PRESET:</span>
+                <span className="text-white uppercase font-mono text-[10px] sm:text-[11px] bg-white/10 px-2 py-0.5 rounded">
                   {eqState.preset}
                 </span>
               </span>
               <button
                 onClick={handleReset}
-                className="flex items-center gap-1 text-[11px] text-zinc-400 hover:text-white transition cursor-pointer"
+                className="flex items-center gap-1 text-[10px] sm:text-[11px] text-zinc-400 hover:text-white transition cursor-pointer"
               >
                 <RotateCcw className="size-3" />
-                <span>Reset Flat (0 dB)</span>
+                <span>Reset (0 dB)</span>
               </button>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar sm:flex-wrap">
               {YOUTUBE_EQ_PRESETS.map((p) => {
                 const isSelected = eqState.preset === p.id;
                 return (
                   <button
                     key={p.id}
                     onClick={() => handlePresetSelect(p.id)}
-                    className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                    className={`rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-semibold shrink-0 transition cursor-pointer ${
                       isSelected
                         ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-sm shadow-violet-500/30"
                         : "border border-white/10 bg-white/5 text-zinc-400 hover:border-white/20 hover:text-white"
@@ -547,23 +543,23 @@ export function YoutubeEq({
             </div>
           </div>
 
-          {/* 10-Band Sliders */}
-          <div className="space-y-2">
+          {/* 10-Band Sliders: Horizontal Swipeable on Mobile, 10 Columns on Desktop */}
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs font-semibold text-zinc-400">
-              <span>FREKUENSI 10-BAND (-12 dB s/d +12 dB)</span>
-              <span className="text-[11px] text-zinc-500">Klik dua kali slider untuk reset ke 0 dB</span>
+              <span className="text-[10px] sm:text-xs">FREKUENSI 10-BAND (-12 dB s/d +12 dB)</span>
+              <span className="text-[9px] sm:text-[11px] text-zinc-500">Klik 2x slider untuk 0 dB</span>
             </div>
 
-            <div className="grid grid-cols-5 gap-2 sm:grid-cols-10 pt-2">
+            <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar sm:grid sm:grid-cols-10">
               {YOUTUBE_EQ_10_BANDS.map((band, idx) => {
                 const gain = eqState.gains10[idx] ?? 0;
                 return (
                   <div
                     key={band.freq}
-                    className="flex flex-col items-center gap-2 rounded-xl border border-white/5 bg-black/40 p-2 py-3"
+                    className="flex flex-col items-center gap-1.5 rounded-xl border border-white/5 bg-black/40 p-2 py-2 min-w-[54px] flex-1 sm:min-w-0"
                   >
                     <span
-                      className={`font-mono text-[11px] font-bold ${
+                      className={`font-mono text-[10px] sm:text-[11px] font-bold ${
                         gain > 0
                           ? "text-fuchsia-400"
                           : gain < 0
@@ -574,7 +570,7 @@ export function YoutubeEq({
                       {gain > 0 ? `+${gain}` : gain}
                     </span>
 
-                    <div className="relative flex h-36 w-6 items-center justify-center">
+                    <div className="relative flex h-24 sm:h-36 w-6 items-center justify-center">
                       <input
                         type="range"
                         min={-12}
@@ -584,12 +580,12 @@ export function YoutubeEq({
                         onDoubleClick={() => handleGainChange(idx, 0)}
                         onChange={(e) => handleGainChange(idx, Number(e.target.value))}
                         style={{ writingMode: "vertical-lr", direction: "rtl" }}
-                        className="h-32 w-1.5 cursor-pointer rounded-full bg-zinc-800 accent-fuchsia-500 hover:accent-violet-400 transition"
+                        className="h-20 sm:h-32 w-1.5 cursor-pointer rounded-full bg-zinc-800 accent-fuchsia-500 hover:accent-violet-400 transition"
                       />
                     </div>
 
                     <div className="text-center">
-                      <span className="block font-mono text-[10px] font-semibold text-zinc-400">
+                      <span className="block font-mono text-[9px] sm:text-[10px] font-semibold text-zinc-400 whitespace-nowrap">
                         {band.label}
                       </span>
                     </div>
