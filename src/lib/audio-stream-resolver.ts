@@ -124,6 +124,8 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
     "--no-check-certificates",
     "--js-runtimes",
     `node:${nodeRuntime}`,
+    "--remote-components",
+    "ejs:github",
     "-g",
     "-f",
     "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",

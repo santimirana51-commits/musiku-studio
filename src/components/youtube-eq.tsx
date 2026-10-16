@@ -53,12 +53,17 @@ export function YoutubeEq({
   const [isMutedOutput, setIsMutedOutput] = useState(false);
   const [directState, setDirectState] = useState<DirectPlayerState>("idle");
   const [isAndroid, setIsAndroid] = useState(false);
+  const [isMobileBrowser, setIsMobileBrowser] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     setIsAndroid(isAndroidNative());
+    setIsMobileBrowser(
+      typeof navigator !== "undefined" &&
+        (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || !navigator.mediaDevices?.getDisplayMedia)
+    );
   }, []);
 
   // Subscribe ke status DirectStreamPlayer
@@ -327,6 +332,11 @@ export function YoutubeEq({
       return;
     }
 
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia || isMobileBrowser) {
+      toast("Penangkapan audio tab hanya didukung pada peramban PC/Desktop.", "info");
+      return;
+    }
+
     setIsConnecting(true);
     try {
       toast("Pilih tab browser MusikKu/YouTube ini di jendela pop-up dan pastikan centang 'Bagikan audio tab'.", "info");
@@ -335,6 +345,8 @@ export function YoutubeEq({
       const error = err as { name?: string; message?: string };
       if (error?.name === "NotAllowedError") {
         toast("Koneksi audio tab dibatalkan pengguna.", "info");
+      } else if (error?.name === "SecurityError") {
+        toast("Izin penangkapan audio tab dibatasi oleh browser Anda.", "error");
       } else {
         toast(error?.message || "Gagal menghubungkan audio tab.", "error");
       }
@@ -467,7 +479,7 @@ export function YoutubeEq({
       {/* Expanded Equalizer Body */}
       {isOpen && (
         <div className="w-full max-w-full min-w-0 overflow-hidden border-t border-white/10 p-3 sm:p-5 space-y-3.5 animate-in fade-in duration-200">
-          {!isTabConnected && !isAndroid && directState !== "playing" && (
+          {!isTabConnected && !isAndroid && !isMobileBrowser && directState !== "playing" && (
             <div className="hidden md:flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-violet-500/30 bg-violet-950/30 p-3 text-xs text-zinc-300">
               <div className="flex items-center gap-2 min-w-0">
                 <Info className="size-4 text-violet-400 shrink-0" />

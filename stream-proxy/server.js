@@ -20,6 +20,7 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
 // In-memory URL cache: videoId -> { url: string, expiresAt: number }
 const streamCache = new Map();
+const lastFailureReason = new Map();
 
 // CORS Headers standar untuk Web Audio API & Range Requests
 const CORS_HEADERS = {
@@ -132,6 +133,8 @@ async function resolveViaYtDlp(videoId) {
     "--no-check-certificates",
     "--js-runtimes",
     `node:${nodeRuntime}`,
+    "--remote-components",
+    "ejs:github",
     "-g",
     "-f",
     "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
@@ -152,7 +155,9 @@ async function resolveViaYtDlp(videoId) {
       return resolvedUrl;
     }
   } catch (err) {
-    console.warn(`[StreamProxy] yt-dlp default failed for ${videoId}:`, err.message);
+    const detail = (err.stderr || err.stdout || err.message || "").trim();
+    lastFailureReason.set(videoId, detail);
+    console.warn(`[StreamProxy] yt-dlp default failed for ${videoId}:`, detail);
   }
 
   // Percobaan 2: Fallback dengan client mweb jika default dibatasi
@@ -172,7 +177,9 @@ async function resolveViaYtDlp(videoId) {
       return resolvedUrl;
     }
   } catch (err) {
-    console.warn(`[StreamProxy] yt-dlp fallback (mweb,android) failed for ${videoId}:`, err.message);
+    const detail = (err.stderr || err.stdout || err.message || "").trim();
+    lastFailureReason.set(videoId, detail);
+    console.warn(`[StreamProxy] yt-dlp fallback (mweb,android) failed for ${videoId}:`, detail);
   }
 
   return null;
@@ -329,7 +336,12 @@ async function handleRequest(req, res) {
 
     let directUrl = await getDirectAudioUrl(videoId);
     if (!directUrl) {
-      const errPayload = JSON.stringify({ error: "Gagal mengekstrak aliran audio untuk video ini." });
+      const reason = lastFailureReason.get(videoId) || "Video stream extraction failed";
+      const errPayload = JSON.stringify({
+        error: "Gagal mengekstrak aliran audio untuk video ini.",
+        videoId,
+        reason,
+      });
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(errPayload);
       return;
