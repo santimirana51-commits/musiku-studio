@@ -12,6 +12,7 @@ import {
   Smartphone,
   Settings,
   Info,
+  Activity,
 } from "lucide-react";
 import {
   YOUTUBE_EQ_10_BANDS,
@@ -25,6 +26,7 @@ import {
   EQ_SYNC_EVENT,
   EQ_SYNC_KEY,
   type YoutubeEqState,
+  type YoutubeEqDiagnostics,
 } from "@/lib/youtube-eq";
 import { directStreamPlayerSingleton, type DirectPlayerState } from "@/lib/direct-stream-player";
 import { isAndroidNative, openSystemEqualizerPanel } from "@/lib/native-equalizer";
@@ -54,6 +56,8 @@ export function YoutubeEq({
   const [directState, setDirectState] = useState<DirectPlayerState>("idle");
   const [isAndroid, setIsAndroid] = useState(false);
   const [isMobileBrowser, setIsMobileBrowser] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<YoutubeEqDiagnostics | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -153,7 +157,19 @@ export function YoutubeEq({
     };
   }, [toast]);
 
-  // Visualizer loop (FFT real jika terhubung, atau kurva respons EQ dinamis jika belum)
+  // Update diagnostik berkala saat panel terbuka atau tab terhubung
+  useEffect(() => {
+    const updateDiag = () => {
+      if (isOpen || isTabConnected) {
+        setDiagnostics(youtubeEqEngineSingleton.getDiagnostics());
+      }
+    };
+    updateDiag();
+    const iv = setInterval(updateDiag, 600);
+    return () => clearInterval(iv);
+  }, [isOpen, isTabConnected]);
+
+  // Visualizer loop (FFT spectrum real jika ada sinyal, status standby jika hening, atau kurva respons EQ jika belum terhubung)
   useEffect(() => {
     let phase = 0;
     const draw = () => {
@@ -172,12 +188,20 @@ export function YoutubeEq({
               ? youtubeEqEngineSingleton.getVisualizerData()
               : null;
 
+          let maxVal = 0;
           if (liveData && liveData.length > 0) {
-            // Live Web Audio FFT spectrum bars
-            const barCount = 32;
+            for (let i = 0; i < liveData.length; i++) {
+              if (liveData[i] > maxVal) maxVal = liveData[i];
+            }
+          }
+          const hasActiveSound = maxVal > 4;
+
+          if (liveData && liveData.length > 0 && hasActiveSound) {
+            // KONDISI 1: AUDIO AKTIF MEMPROSES SUARA (Live FFT Spectrum Bars)
+            const barCount = 36;
             const barWidth = width / barCount - 2;
             for (let i = 0; i < barCount; i++) {
-              const binIdx = Math.floor((i / barCount) * (liveData.length * 0.7));
+              const binIdx = Math.floor((i / barCount) * (liveData.length * 0.85));
               const val = liveData[binIdx] / 255;
               const barHeight = Math.max(4, val * (height - 8));
               const x = i * (barWidth + 2);
@@ -192,25 +216,55 @@ export function YoutubeEq({
               ctx.beginPath();
               ctx.roundRect(x, y, barWidth, barHeight, [2, 2, 0, 0]);
               ctx.fill();
+
+              // Titik puncak (peak glow)
+              if (barHeight > 8) {
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(x, Math.max(1, y - 2), barWidth, 1.5);
+              }
             }
+          } else if (isTabConnected) {
+            // KONDISI 2: TAB TERHUBUNG TETAPI HENING (Audio Belum Dimulai / Paused)
+            phase += 0.05;
+            const midY = height / 2;
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(234, 179, 8, 0.4)";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.moveTo(8, midY);
+            for (let x = 8; x < width - 8; x += 8) {
+              const pulse = Math.sin(phase + x * 0.03) * 2;
+              ctx.lineTo(x, midY + pulse);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = "rgba(253, 224, 71, 0.85)";
+            ctx.font = "10px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(
+              "Tab Terhubung — Menunggu audio YouTube diputar untuk memfilter...",
+              width / 2,
+              height - 8
+            );
           } else {
-            // Animated EQ Curve visualizer
-            phase += 0.04;
+            // KONDISI 3: BELUM TERHUBUNG (Kurva Respons Frekuensi EQ 10-Band)
+            phase += 0.03;
             const pointsCount = 10;
             const points: { x: number; y: number }[] = [];
 
             for (let i = 0; i < pointsCount; i++) {
               const gain = eqState.enabled ? eqState.gains10[i] : 0;
               const normalized = gain / 12; // -1 to 1
-              const baseY = height / 2 - normalized * (height * 0.38);
-              const subtleWave = Math.sin(phase + i * 0.8) * 3;
+              const baseY = height / 2 - normalized * (height * 0.36);
+              const subtleWave = Math.sin(phase + i * 0.7) * 2;
               points.push({
-                x: (i / (pointsCount - 1)) * (width - 16) + 8,
+                x: (i / (pointsCount - 1)) * (width - 20) + 10,
                 y: Math.max(6, Math.min(height - 6, baseY + subtleWave)),
               });
             }
 
-            // Draw area under curve
+            // Area di bawah kurva
             ctx.beginPath();
             ctx.moveTo(points[0].x, height);
             ctx.lineTo(points[0].x, points[0].y);
@@ -224,12 +278,12 @@ export function YoutubeEq({
             ctx.closePath();
 
             const areaGrad = ctx.createLinearGradient(0, 0, 0, height);
-            areaGrad.addColorStop(0, "rgba(168, 85, 247, 0.25)");
-            areaGrad.addColorStop(1, "rgba(236, 72, 153, 0.02)");
+            areaGrad.addColorStop(0, "rgba(168, 85, 247, 0.2)");
+            areaGrad.addColorStop(1, "rgba(236, 72, 153, 0.01)");
             ctx.fillStyle = areaGrad;
             ctx.fill();
 
-            // Draw line
+            // Garis kurva respons
             ctx.beginPath();
             ctx.moveTo(points[0].x, points[0].y);
             for (let i = 0; i < points.length - 1; i++) {
@@ -239,11 +293,22 @@ export function YoutubeEq({
             }
             ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
             ctx.strokeStyle = eqState.enabled ? "#c084fc" : "#71717a";
-            ctx.lineWidth = 2.5;
+            ctx.lineWidth = 2;
             ctx.shadowColor = eqState.enabled ? "#a855f7" : "transparent";
-            ctx.shadowBlur = 8;
+            ctx.shadowBlur = 6;
             ctx.stroke();
             ctx.shadowBlur = 0;
+
+            ctx.fillStyle = "rgba(161, 161, 170, 0.6)";
+            ctx.font = "9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(
+              eqState.enabled
+                ? "Kurva Respons EQ (Klik 'Sambungkan Audio Tab' untuk live processing)"
+                : "EQ Bypass — Audio asli YouTube tanpa filter",
+              width / 2,
+              height - 6
+            );
           }
         }
       }
@@ -382,14 +447,31 @@ export function YoutubeEq({
                 <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[9px] font-bold text-blue-300 border border-blue-500/30">
                   ANDROID DSP
                 </span>
-              ) : eqState.enabled ? (
-                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                  <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  10-BAND EQ AKTIF
-                </span>
-              ) : (
+              ) : !eqState.enabled ? (
                 <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[9px] font-bold text-zinc-400 border border-white/10">
                   BYPASS
+                </span>
+              ) : isTabConnected ? (
+                diagnostics?.hasSignal ? (
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    10-BAND EQ AKTIF
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-bold text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-amber-400" />
+                    TAB TERHUBUNG (STANDBY)
+                  </span>
+                )
+              ) : directState === "playing" ? (
+                <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[9px] font-bold text-violet-300 border border-violet-500/30 flex items-center gap-1">
+                  <span className="size-1.5 rounded-full bg-violet-400 animate-ping" />
+                  DIRECT DSP AKTIF
+                </span>
+              ) : (
+                <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[9px] font-bold text-zinc-400 border border-white/10 flex items-center gap-1">
+                  <span className="size-1.5 rounded-full bg-zinc-500" />
+                  PEMUTAR RESMI
                 </span>
               )}
             </div>
@@ -458,6 +540,20 @@ export function YoutubeEq({
             </button>
           )}
 
+          {/* Tombol Diagnostik Audio & Engine */}
+          <button
+            onClick={() => setShowDiagnostics(!showDiagnostics)}
+            title="Lihat status diagnostik Web Audio, AudioContext & Sinyal"
+            className={`hidden sm:inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+              showDiagnostics
+                ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
+                : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <Activity className="size-3.5 text-cyan-400" />
+            <span>Diagnostik</span>
+          </button>
+
           {/* Master Power / Bypass */}
           <button
             onClick={handleToggleEnable}
@@ -487,6 +583,85 @@ export function YoutubeEq({
       {/* Expanded Equalizer Body */}
       {isOpen && (
         <div className="w-full max-w-full min-w-0 overflow-hidden border-t border-white/10 p-3 sm:p-5 space-y-3.5 animate-in fade-in duration-200">
+          {/* Banner Diagnostik Web Audio & Sinyal */}
+          {showDiagnostics && (
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                  <Activity className="size-3.5 text-cyan-400" />
+                  DIAGNOSTIK WEB AUDIO & CAPTURE
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  Engine: {diagnostics?.isConnected ? "TERKONEKSI" : "STANDBY"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">AudioContext</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      diagnostics?.audioContextState === "running" ? "text-emerald-400" : "text-amber-400"
+                    }`}
+                  >
+                    {diagnostics?.audioContextState || "none"} (
+                    {diagnostics?.sampleRate ? `${diagnostics.sampleRate} Hz` : "-"})
+                  </span>
+                </div>
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Audio Track</span>
+                  <span className="font-mono font-bold text-zinc-200 truncate block" title={diagnostics?.audioTrackLabel}>
+                    {diagnostics?.hasAudioTrack ? `Live (${diagnostics.audioTrackCount})` : "Tidak ada"}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Level Sinyal Masuk</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-150 ${
+                          (diagnostics?.signalLevel || 0) > 0
+                            ? "bg-gradient-to-r from-emerald-500 to-cyan-400"
+                            : "bg-zinc-600"
+                        }`}
+                        style={{ width: `${diagnostics?.signalLevel || 0}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-zinc-300">{diagnostics?.signalLevel || 0}%</span>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Status Output</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      diagnostics?.isOutputMuted ? "text-amber-400" : "text-emerald-400"
+                    }`}
+                  >
+                    {diagnostics?.isOutputMuted ? "Bisu (Visual Saja)" : "Aktif ke Speaker"}
+                  </span>
+                </div>
+              </div>
+              <div className="text-[10px] text-zinc-400 flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-white/5">
+                <span>
+                  Rantai Pemrosesan: <code>Source → Preamp → 10 Biquad Filters → Analyser → Output</code>
+                </span>
+                <span>
+                  Penekanan Audio Tab Lokal:{" "}
+                  {diagnostics?.suppressLocalPlaybackSupported ? "Didukung Browser ✓" : "Standard"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Alert jika Anti-Gema Aktif */}
+          {isTabConnected && isMutedOutput && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/30 p-2.5 text-xs text-amber-200">
+              <Info className="size-4 shrink-0 text-amber-400" />
+              <span>
+                <strong>Mode Anti-Gema Aktif:</strong> Output Web Audio dibisukan ke speaker. Visualizer tetap bereaksi, namun perubahan slider EQ tidak terdengar ke speaker. Matikan Anti-Gema di atas untuk mendengar efek EQ.
+              </span>
+            </div>
+          )}
+
           {!isTabConnected && !isAndroid && !isMobileBrowser && directState !== "playing" && (
             <div className="hidden md:flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-violet-500/30 bg-violet-950/30 p-3 text-xs text-zinc-300">
               <div className="flex items-center gap-2 min-w-0">

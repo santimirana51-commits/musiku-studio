@@ -158,6 +158,21 @@ export function setGlobalEqSync(enabled: boolean): void {
   void setNativeEqualizerEnabled(enabled);
 }
 
+export interface YoutubeEqDiagnostics {
+  isConnected: boolean;
+  audioContextState: AudioContextState | "closed" | "none";
+  sampleRate: number;
+  hasAudioTrack: boolean;
+  audioTrackCount: number;
+  audioTrackLabel: string;
+  audioTrackReadyState: MediaStreamTrackState | "none";
+  videoTrackCount: number;
+  hasSignal: boolean;
+  signalLevel: number; // 0..100
+  isOutputMuted: boolean;
+  suppressLocalPlaybackSupported: boolean;
+}
+
 /**
  * Web Audio Engine untuk penangkapan Live Tab Audio YouTube & real-time EQ filtering
  */
@@ -188,7 +203,85 @@ export class YoutubeEqEngine {
   public setOutputMuted(muted: boolean): void {
     this.isOutputMuted = muted;
     if (this.outputGain && this.ctx) {
-      this.outputGain.gain.setValueAtTime(muted ? 0 : 1, this.ctx.currentTime);
+      try {
+        const now = this.ctx.currentTime;
+        this.outputGain.gain.cancelScheduledValues(now);
+        this.outputGain.gain.setValueAtTime(muted ? 0 : 1, now);
+      } catch {
+        this.outputGain.gain.value = muted ? 0 : 1;
+      }
+    }
+  }
+
+  /**
+   * Gunakan kembali AudioContext yang ada secara aman agar tidak melebihi batas browser (maks 6).
+   */
+  public getOrCreateContext(): AudioContext {
+    if (this.ctx && this.ctx.state !== "closed") {
+      return this.ctx;
+    }
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx();
+    this.ctx = ctx;
+
+    // Pasang listener resume otomatis pada setiap interaksi pengguna
+    if (typeof window !== "undefined") {
+      const resumeOnGesture = () => {
+        if (this.ctx && this.ctx.state === "suspended") {
+          void this.ctx.resume();
+        }
+      };
+      window.addEventListener("click", resumeOnGesture, { passive: true });
+      window.addEventListener("keydown", resumeOnGesture, { passive: true });
+      window.addEventListener("touchstart", resumeOnGesture, { passive: true });
+    }
+
+    return ctx;
+  }
+
+  /**
+   * Bersihkan trek media dan node Web Audio tanpa menutup AudioContext utama.
+   */
+  private cleanUpStreamAndNodes(): void {
+    if (this.stream) {
+      this.stream.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {}
+      });
+      this.stream = null;
+    }
+    if (this.sourceNode) {
+      try {
+        this.sourceNode.disconnect();
+      } catch {}
+      this.sourceNode = null;
+    }
+    if (this.preampGain) {
+      try {
+        this.preampGain.disconnect();
+      } catch {}
+      this.preampGain = null;
+    }
+    for (const f of this.filters) {
+      try {
+        f.disconnect();
+      } catch {}
+    }
+    this.filters = [];
+    if (this.analyser) {
+      try {
+        this.analyser.disconnect();
+      } catch {}
+      this.analyser = null;
+    }
+    if (this.outputGain) {
+      try {
+        this.outputGain.disconnect();
+      } catch {}
+      this.outputGain = null;
     }
   }
 
@@ -201,136 +294,145 @@ export class YoutubeEqEngine {
       throw new Error("Penangkapan audio tab hanya didukung pada peramban PC/Desktop (Chrome, Edge, Firefox).");
     }
 
-    // Buat AudioContext sinkron di awal agar izin gestur klik pengguna (User Activation) aktif
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new AudioCtx();
+    const ctx = this.getOrCreateContext();
     if (ctx.state === "suspended") {
       try {
         await ctx.resume();
       } catch {}
     }
 
-    try {
-      let stream: MediaStream;
-      const audioConstraints = {
-        suppressLocalAudioPlayback: true,
+    // Bersihkan sesi streaming lama jika ada
+    this.cleanUpStreamAndNodes();
+
+    let stream: MediaStream;
+    const supportedConstraints =
+      typeof navigator !== "undefined" && navigator.mediaDevices?.getSupportedConstraints
+        ? navigator.mediaDevices.getSupportedConstraints()
+        : null;
+    const supportsSuppress = Boolean(supportedConstraints && "suppressLocalAudioPlayback" in supportedConstraints);
+
+    const preferredOptions: DisplayMediaStreamOptions & {
+      preferCurrentTab?: boolean;
+      selfBrowserSurface?: string;
+      systemAudio?: string;
+      suppressLocalAudioPlayback?: boolean;
+    } = {
+      video: {
+        displaySurface: "browser",
+      },
+      audio: {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-      } as MediaTrackConstraints;
+      },
+      preferCurrentTab: true,
+      selfBrowserSurface: "include",
+      systemAudio: "include",
+      ...(supportsSuppress ? { suppressLocalAudioPlayback: true } : {}),
+    };
 
+    try {
       try {
-        // suppressLocalAudioPlayback: true adalah kunci mutlak untuk mencegah gema/echo!
-        // Constraint resmi W3C ini memerintahkan browser untuk membisukan audio lokal bawaan tab,
-        // sehingga pengguna HANYA mendengar satu aliran audio yang sudah difilter oleh Equalizer 10-Band.
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: audioConstraints,
-          preferCurrentTab: true,
-          selfBrowserSurface: "include",
-          systemAudio: "include",
-        } as MediaStreamConstraints & { preferCurrentTab?: boolean; selfBrowserSurface?: string; systemAudio?: string });
+        stream = await navigator.mediaDevices.getDisplayMedia(preferredOptions);
       } catch (err: unknown) {
         const e = err as { name?: string };
         if (e?.name === "NotAllowedError" || e?.name === "SecurityError") {
-          try { void ctx.close(); } catch {}
           throw err;
         }
-        try {
-          // Fallback sederhana jika browser menolak opsi Chromium-spesifik
-          stream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true,
-          });
-        } catch (fallbackErr) {
-          try { void ctx.close(); } catch {}
-          throw fallbackErr;
-        }
+        // Fallback opsi dasar jika browser menolak constraint lanjutan
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
       }
-
-      // Hentikan trek video segera agar tidak membebani CPU dan RAM karena kita hanya membutuhkan audio
-      stream.getVideoTracks().forEach((vt) => {
-        try {
-          vt.stop();
-        } catch {}
-      });
-
-      const audioTracks = stream.getAudioTracks();
-      if (audioTracks.length === 0) {
-        stream.getTracks().forEach((t) => t.stop());
-        try { void ctx.close(); } catch {}
-        throw new Error(
-          "Tidak ada trek audio yang terdeteksi. Pastikan mencentang pilihan 'Bagikan audio tab' (Also share tab audio) saat memilih tab."
-        );
-      }
-
-      // Terapkan suppressLocalAudioPlayback langsung ke track jika didukung oleh browser
-      try {
-        if (typeof audioTracks[0].applyConstraints === "function") {
-          // @ts-expect-error Chromium specific constraint
-          await audioTracks[0].applyConstraints({ suppressLocalAudioPlayback: true });
-        }
-      } catch {}
-
-      this.disconnect();
-      this.ctx = ctx;
-      if (this.ctx.state === "suspended") {
-        try {
-          await this.ctx.resume();
-        } catch {}
-      }
-
-      this.stream = stream;
-      this.sourceNode = this.ctx.createMediaStreamSource(stream);
-
-      // Preamp Gain Node
-      this.preampGain = this.ctx.createGain();
-      this.preampGain.gain.value = Math.pow(10, preampDb / 20);
-
-      // Analyser Node for Visualizer
-      this.analyser = this.ctx.createAnalyser();
-      this.analyser.fftSize = 128;
-      this.analyser.smoothingTimeConstant = 0.8;
-
-      // Output Gain Node (untuk kontrol anti-gema & volume hasil filter)
-      this.outputGain = this.ctx.createGain();
-      this.outputGain.gain.value = this.isOutputMuted ? 0 : 1.0;
-
-      // 10-Band Biquad Filters (peaking EQ)
-      this.filters = YOUTUBE_EQ_10_BANDS.map((band, i) => {
-        const filter = this.ctx!.createBiquadFilter();
-        filter.type = i === 0 ? "lowshelf" : i === YOUTUBE_EQ_10_BANDS.length - 1 ? "highshelf" : "peaking";
-        filter.frequency.value = band.freq;
-        filter.Q.value = 1.4;
-        filter.gain.value = initialGains[i] ?? 0;
-        return filter;
-      });
-
-      // Chain audio: Source -> Preamp -> Filter 0 -> Filter 1 ... -> Filter 9 -> Analyser -> OutputGain -> Destination
-      let lastNode: AudioNode = this.sourceNode;
-      lastNode.connect(this.preampGain);
-      lastNode = this.preampGain;
-
-      for (const filter of this.filters) {
-        lastNode.connect(filter);
-        lastNode = filter;
-      }
-
-      lastNode.connect(this.analyser);
-      this.analyser.connect(this.outputGain);
-      this.outputGain.connect(this.ctx.destination);
-
-      audioTracks[0].onended = () => {
-        this.disconnect();
-      };
-
-      this.isConnected = true;
-      this.onStateChangeCb?.(true);
-      return true;
     } catch (err) {
       this.disconnect();
       throw err;
     }
+
+    // PENTING: Jangan panggil vt.stop() karena di beberapa browser hal itu mematikan seluruh sesi capture!
+    // Cukup nonaktifkan (enabled = false) untuk hemat CPU/GPU tanpa memutus stream audio.
+    stream.getVideoTracks().forEach((vt) => {
+      vt.enabled = false;
+    });
+
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      stream.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {}
+      });
+      throw new Error(
+        "Tidak ada audio yang dibagikan. Pastikan mencentang kotak 'Bagikan audio tab' (Also share tab audio) pada dialog browser."
+      );
+    }
+
+    // Coba terapkan suppressLocalAudioPlayback pada track jika didukung
+    try {
+      if (typeof audioTracks[0].applyConstraints === "function") {
+        // @ts-expect-error Chromium specific constraint
+        await audioTracks[0].applyConstraints({ suppressLocalAudioPlayback: true });
+      }
+    } catch {}
+
+    // Pasang listener saat user menghentikan sharing via banner browser
+    stream.getTracks().forEach((track) => {
+      track.onended = () => {
+        this.disconnect();
+      };
+    });
+
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {}
+    }
+
+    this.stream = stream;
+    this.sourceNode = ctx.createMediaStreamSource(stream);
+
+    // Preamp Node
+    this.preampGain = ctx.createGain();
+    this.preampGain.gain.value = Math.pow(10, preampDb / 20);
+
+    // 10-Band Biquad Filters (peaking/shelf EQ)
+    this.filters = YOUTUBE_EQ_10_BANDS.map((band, i) => {
+      const filter = ctx.createBiquadFilter();
+      filter.type = i === 0 ? "lowshelf" : i === YOUTUBE_EQ_10_BANDS.length - 1 ? "highshelf" : "peaking";
+      filter.frequency.value = band.freq;
+      filter.Q.value = 1.4;
+      filter.gain.value = initialGains[i] ?? 0;
+      return filter;
+    });
+
+    // Analyser Node diletakkan setelah filters agar visualizer benar-benar menampilkan efek EQ
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 128;
+    this.analyser.smoothingTimeConstant = 0.8;
+
+    // Output Gain Node
+    this.outputGain = ctx.createGain();
+    this.outputGain.gain.value = this.isOutputMuted ? 0 : 1.0;
+
+    // Sambungkan rantai Web Audio secara berurutan:
+    // Source -> Preamp -> Filter 0..9 -> Analyser -> OutputGain -> Destination
+    let lastNode: AudioNode = this.sourceNode;
+    lastNode.connect(this.preampGain);
+    lastNode = this.preampGain;
+
+    for (const filter of this.filters) {
+      lastNode.connect(filter);
+      lastNode = filter;
+    }
+
+    lastNode.connect(this.analyser);
+    this.analyser.connect(this.outputGain);
+    this.outputGain.connect(ctx.destination);
+
+    this.isConnected = true;
+    this.onStateChangeCb?.(true);
+    return true;
   }
 
   public updateGains(gains: number[], enabled = true): void {
@@ -339,16 +441,27 @@ export class YoutubeEqEngine {
     if (this.ctx.state === "suspended") {
       void this.ctx.resume();
     }
+    const now = this.ctx.currentTime;
     for (let i = 0; i < this.filters.length; i++) {
       const targetGain = enabled ? (gains[i] ?? 0) : 0;
-      this.filters[i].gain.setValueAtTime(targetGain, this.ctx.currentTime);
+      try {
+        this.filters[i].gain.cancelScheduledValues(now);
+        this.filters[i].gain.setTargetAtTime(targetGain, now, 0.02);
+      } catch {
+        this.filters[i].gain.value = targetGain;
+      }
     }
   }
 
   public updatePreamp(preampDb: number): void {
     if (!this.ctx || !this.preampGain) return;
     const gainVal = Math.pow(10, preampDb / 20);
-    this.preampGain.gain.setTargetAtTime(gainVal, this.ctx.currentTime, 0.05);
+    try {
+      this.preampGain.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.preampGain.gain.setTargetAtTime(gainVal, this.ctx.currentTime, 0.05);
+    } catch {
+      this.preampGain.gain.value = gainVal;
+    }
   }
 
   public getVisualizerData(): Uint8Array | null {
@@ -358,22 +471,55 @@ export class YoutubeEqEngine {
     return buffer;
   }
 
+  public getSignalLevel(): number {
+    if (!this.analyser) return 0;
+    const buffer = new Uint8Array(this.analyser.frequencyBinCount);
+    this.analyser.getByteFrequencyData(buffer);
+    let sum = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      sum += buffer[i];
+    }
+    const avg = sum / buffer.length;
+    return Math.min(100, Math.round((avg / 255) * 100 * 2));
+  }
+
+  public hasActiveSignal(): boolean {
+    if (!this.analyser) return false;
+    const buffer = new Uint8Array(this.analyser.frequencyBinCount);
+    this.analyser.getByteFrequencyData(buffer);
+    for (let i = 0; i < buffer.length; i++) {
+      if (buffer[i] > 5) return true;
+    }
+    return false;
+  }
+
+  public getDiagnostics(): YoutubeEqDiagnostics {
+    const audioTrack = this.stream?.getAudioTracks()[0];
+    const videoTracks = this.stream?.getVideoTracks() || [];
+    const supportedConstraints =
+      typeof navigator !== "undefined" && navigator.mediaDevices?.getSupportedConstraints
+        ? navigator.mediaDevices.getSupportedConstraints()
+        : null;
+    const supportsSuppress = Boolean(supportedConstraints && "suppressLocalAudioPlayback" in supportedConstraints);
+
+    return {
+      isConnected: this.isConnected,
+      audioContextState: this.ctx ? this.ctx.state : "none",
+      sampleRate: this.ctx ? this.ctx.sampleRate : 0,
+      hasAudioTrack: Boolean(audioTrack && audioTrack.readyState === "live"),
+      audioTrackCount: this.stream ? this.stream.getAudioTracks().length : 0,
+      audioTrackLabel: audioTrack?.label || "none",
+      audioTrackReadyState: audioTrack?.readyState || "none",
+      videoTrackCount: videoTracks.length,
+      hasSignal: this.hasActiveSignal(),
+      signalLevel: this.getSignalLevel(),
+      isOutputMuted: this.isOutputMuted,
+      suppressLocalPlaybackSupported: supportsSuppress,
+    };
+  }
+
   public disconnect(): void {
-    if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop());
-      this.stream = null;
-    }
-    if (this.ctx) {
-      try {
-        void this.ctx.close();
-      } catch {}
-      this.ctx = null;
-    }
-    this.sourceNode = null;
-    this.preampGain = null;
-    this.filters = [];
-    this.analyser = null;
-    this.outputGain = null;
+    this.cleanUpStreamAndNodes();
     this.isOutputMuted = false;
     if (this.isConnected) {
       this.isConnected = false;
