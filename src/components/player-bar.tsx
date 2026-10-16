@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Pause, Play, SkipBack, SkipForward, ChevronUp, ChevronDown, ListVideo, Sliders } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, ChevronUp, ChevronDown, ListVideo, Sliders, Mic2 } from "lucide-react";
 import { usePlayer } from "./player-context";
 import { YouTubeEmbed } from "./youtube-embed";
 
@@ -11,10 +11,10 @@ export function PlayerBar() {
   const pathname = usePathname();
   if (!current) return null;
 
-  // Mini player global: satu-satunya instance aktif di luar /watch, supaya
-  // musik terus jalan saat navigasi sidebar. Di /watch yang tampil instance
-  // besar dari halaman watch — tidak pernah dua-duanya.
-  const showMini = pathname !== "/watch";
+  // Mini player global: satu-satunya instance aktif di luar /watch dan /karaoke.
+  // Di /watch atau /karaoke, pemutar video utama halaman yang aktif — tidak pernah
+  // dua-duanya sekaligus agar tidak terjadi konflik audio atau iframe ganda.
+  const showMini = pathname !== "/watch" && pathname !== "/karaoke";
   const playing = status === "playing";
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 md:bottom-0 md:left-60" role="region" aria-label="Pemutar">
@@ -82,6 +82,14 @@ export function PlayerBar() {
           >
             <Sliders className="size-3.5" />
             <span className="hidden md:inline">EQ</span>
+          </Link>
+          <Link
+            href={`/karaoke?v=${current.videoId}`}
+            title="Buka lagu ini di Mode Karaoke"
+            className="flex items-center gap-1.5 rounded-full border border-fuchsia-500/30 bg-fuchsia-600/10 px-2.5 py-1.5 text-xs font-bold text-fuchsia-300 hover:bg-fuchsia-600/20 transition cursor-pointer"
+          >
+            <Mic2 className="size-3.5" />
+            <span className="hidden md:inline">Karaoke</span>
           </Link>
           <button
             onClick={() => setExpanded(!isExpanded)}

@@ -24,6 +24,7 @@ interface PlayerState {
   isExpanded: boolean;
   playQueue: (items: VideoItem[], startIndex?: number) => void;
   playOne: (item: VideoItem) => void;
+  syncTrack: (item: VideoItem, status?: PlayerStatus) => void;
   addToQueue: (item: VideoItem) => void;
   next: () => void;
   prev: () => void;
@@ -175,6 +176,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [recordHistory, goWatch, clearResume]
   );
 
+  const syncTrack = useCallback(
+    (item: VideoItem, nextStatus: PlayerStatus = "playing") => {
+      setQueue((q) => {
+        const exists = q.findIndex((x) => x.videoId === item.videoId);
+        if (exists >= 0) {
+          setIndex(exists);
+          saveQueue(q);
+          return q;
+        }
+        const next = [item, ...q].slice(0, 100);
+        setIndex(0);
+        saveQueue(next);
+        return next;
+      });
+      setError(null);
+      setStatus(nextStatus);
+      recordHistory(item);
+    },
+    [recordHistory]
+  );
+
   const addToQueue = useCallback((item: VideoItem) => {
     setQueue((q) => {
       if (q.some((x) => x.videoId === item.videoId)) return q;
@@ -218,6 +240,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       isExpanded,
       playQueue,
       playOne,
+      syncTrack,
       addToQueue,
       next,
       prev,
@@ -228,7 +251,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setResume,
       takeResume,
     }),
-    [queue, index, status, error, isExpanded, playQueue, playOne, addToQueue, next, prev, setResume, takeResume]
+    [queue, index, status, error, isExpanded, playQueue, playOne, syncTrack, addToQueue, next, prev, setResume, takeResume]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

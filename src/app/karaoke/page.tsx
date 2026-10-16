@@ -174,8 +174,8 @@ function KaraokeInner() {
 
   const chooseVideo = useCallback(
     (v: VideoItem) => {
-      // Jeda pemutar musik global agar tidak audio ganda.
-      musicPlayer.setStatus("paused");
+      // Sinkronkan ke pemutar musik global
+      musicPlayer.syncTrack(v, "playing");
       setVideo(v);
       setStored([]);
       setLyricId(null);
@@ -194,8 +194,52 @@ function KaraokeInner() {
       } catch {}
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadStored]
+    [loadStored, musicPlayer.syncTrack]
   );
+
+  // Sinkronisasi otomatis jika ada parameter ?v=... di URL (mis. dialihkan dari tombol Mode Karaoke)
+  useEffect(() => {
+    const vId = params.get("v");
+    if (!vId) return;
+    if (video?.videoId === vId) return;
+
+    if (musicPlayer.current?.videoId === vId) {
+      chooseVideo(musicPlayer.current);
+      return;
+    }
+
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/videos/${vId}`);
+        const data = await res.json();
+        if (alive && res.ok && data?.item) {
+          chooseVideo(data.item);
+        }
+      } catch {}
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [params, video?.videoId, musicPlayer.current, chooseVideo]);
+
+  // Sinkronisasi jika track aktif diubah dari PlayerBar (mis. user menekan Next/Prev antrean)
+  useEffect(() => {
+    if (musicPlayer.current && video && musicPlayer.current.videoId !== video.videoId) {
+      chooseVideo(musicPlayer.current);
+    }
+  }, [musicPlayer.current, video, chooseVideo]);
+
+  // Sinkronisasi kontrol Play/Pause dari PlayerBar global ke pemutar karaoke
+  useEffect(() => {
+    if (!video) return;
+    if (musicPlayer.status === "playing" && playerState !== "playing" && playerState !== "buffering") {
+      playerRef.current?.play();
+    } else if (musicPlayer.status === "paused" && playerState === "playing") {
+      playerRef.current?.pause();
+    }
+  }, [musicPlayer.status, video, playerState]);
 
   // Terapkan lirik terpilih ke engine.
   useEffect(() => {
@@ -432,6 +476,39 @@ function KaraokeInner() {
             </button>
           ))}
         </div>
+
+        {/* Banner cepat lagu yang sedang diputar di Mini Player */}
+        {musicPlayer.current && !video && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-fuchsia-500/30 bg-gradient-to-r from-violet-900/40 via-fuchsia-900/30 to-pink-900/20 p-4">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={musicPlayer.current.thumbnail}
+                alt=""
+                className="size-12 rounded-xl object-cover border border-white/10 shadow shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-300">
+                  Sedang Diputar di Mini Player
+                </p>
+                <p className="truncate text-sm font-bold text-white">
+                  {musicPlayer.current.title}
+                </p>
+                <p className="truncate text-xs text-zinc-400">
+                  {musicPlayer.current.channelTitle}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => chooseVideo(musicPlayer.current!)}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-pink-500 px-4 py-2 text-xs font-bold text-white shadow-lg hover:brightness-110 transition cursor-pointer shrink-0"
+            >
+              <Mic2 className="size-4" />
+              <span>Karaokekan Lagu Ini</span>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Stage karaoke */}
@@ -461,6 +538,15 @@ function KaraokeInner() {
               <span>Ganti Lagu</span>
             </button>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white px-1">{video.title}</span>
+
+            {/* Mode YouTube Button */}
+            <Link
+              href={`/watch?v=${video.videoId}`}
+              className="flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-600/15 px-3 py-2 text-xs font-bold text-red-200 hover:bg-red-600/25 transition shadow-sm cursor-pointer"
+              title="Tonton video klip ini di Mode YouTube resmi"
+            >
+              <span>Mode YouTube</span>
+            </Link>
 
             {/* Buka di Studio DAW Button */}
             <button
@@ -493,6 +579,11 @@ function KaraokeInner() {
                 onState={(s) => {
                   setPlayerState(s);
                   engineRef.current?.handlePlayerState(s);
+                  if (s === "playing") {
+                    musicPlayer.setStatus("playing");
+                  } else if (s === "paused" || s === "ended") {
+                    musicPlayer.setStatus("paused");
+                  }
                 }}
                 onError={setPlayerError}
               />

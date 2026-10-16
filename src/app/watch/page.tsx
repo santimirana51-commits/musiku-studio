@@ -1,6 +1,8 @@
 "use client";
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Mic2 } from "lucide-react";
 import { YouTubeEmbed } from "@/components/youtube-embed";
 import { YoutubeEq } from "@/components/youtube-eq";
 import { VideoCard, EmptyState } from "@/components/video-card";
@@ -57,8 +59,20 @@ function WatchInner() {
         )}
         {detail && (
           <div>
-            <h1 className="text-lg font-bold text-white">{detail.title}</h1>
-            <p className="mt-1 text-sm text-zinc-400">{detail.channelTitle}</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg font-bold text-white">{detail.title}</h1>
+                <p className="mt-1 text-sm text-zinc-400">{detail.channelTitle}</p>
+              </div>
+              <Link
+                href={`/karaoke?v=${id}`}
+                className="flex items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-gradient-to-r from-violet-600/30 to-fuchsia-600/30 px-3.5 py-2 text-xs font-bold text-fuchsia-200 hover:bg-fuchsia-600/40 transition shadow-sm cursor-pointer"
+                title="Beralih ke Mode Karaoke dengan sinkronisasi lirik"
+              >
+                <Mic2 className="size-4 text-fuchsia-300" aria-hidden />
+                <span>Mode Karaoke</span>
+              </Link>
+            </div>
             {detail.description && <p className="mt-3 line-clamp-2 text-sm text-zinc-500">{detail.description}</p>}
             <p className="mt-3 text-[11px] text-zinc-600">Diputar melalui player resmi YouTube. Kontrol volume & kualitas tersedia di dalam player.</p>
           </div>
