@@ -11,6 +11,7 @@ import {
   ChevronUp,
   Smartphone,
   Settings,
+  Info,
 } from "lucide-react";
 import {
   YOUTUBE_EQ_10_BANDS,
@@ -394,6 +395,28 @@ export function YoutubeEq({
             </button>
           )}
 
+          {/* Tombol Sambungkan Audio Tab untuk Desktop */}
+          {!isAndroid && (
+            <button
+              onClick={handleConnectTab}
+              disabled={isConnecting}
+              title="Sambungkan audio tab browser langsung ke Equalizer Web Audio tanpa perlu proxy"
+              className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                isTabConnected
+                  ? "border-emerald-500/40 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
+                  : "border-fuchsia-500/30 bg-fuchsia-600/15 text-fuchsia-200 hover:bg-fuchsia-600/25"
+              }`}
+            >
+              <Volume2 className="size-3.5 text-fuchsia-400" />
+              <span className="hidden sm:inline">
+                {isConnecting ? "Menghubungkan..." : isTabConnected ? "Tab Terhubung ✓" : "Sambungkan Audio Tab"}
+              </span>
+              <span className="sm:hidden">
+                {isTabConnected ? "Tab ✓" : "Tab Audio"}
+              </span>
+            </button>
+          )}
+
           {/* Master Power / Bypass */}
           <button
             onClick={handleToggleEnable}
@@ -422,7 +445,23 @@ export function YoutubeEq({
       {/* Expanded Equalizer Body */}
       {isOpen && (
         <div className="border-t border-white/10 p-4 sm:p-5 space-y-4 animate-in fade-in duration-200">
-
+          {!isTabConnected && !isAndroid && directState !== "playing" && (
+            <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-violet-500/30 bg-violet-950/30 p-3 text-xs text-zinc-300">
+              <div className="flex items-center gap-2 min-w-0">
+                <Info className="size-4 text-violet-400 shrink-0" />
+                <span className="text-[11px] sm:text-xs">
+                  Audio YouTube saat ini diputar melalui pemutar resmi. Untuk memfilter suara secara live di PC/Laptop dengan Web Audio EQ, klik <strong>Sambungkan Audio Tab</strong>.
+                </span>
+              </div>
+              <button
+                onClick={handleConnectTab}
+                disabled={isConnecting}
+                className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-xs font-bold text-white shadow hover:brightness-110 transition cursor-pointer shrink-0"
+              >
+                {isConnecting ? "Menghubungkan..." : "Sambungkan Audio Tab"}
+              </button>
+            </div>
+          )}
 
           {/* Real-time Spectrum Visualizer */}
           <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/60 p-3 flex flex-col justify-between h-28 w-full">
