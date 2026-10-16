@@ -95,3 +95,23 @@ Setelah microservice aktif dan memiliki URL publik (misal `https://musiku-studio
 - Browser pengguna akan langsung terhubung ke stream proxy VPS untuk audio equalizer.
 - Beban streaming sepenuhnya dialihkan dari Vercel ke VPS.
 - Fitur 10-Band Equalizer YouTube di website production aktif 100%!
+
+---
+
+## 🍪 Solusi Jika YouTube Meminta Konfirmasi Bot ("Sign in to confirm you're not a bot")
+
+IP server cloud publik (seperti Railway, AWS, DigitalOcean) kadang dibatasi oleh YouTube dan memunculkan log:
+`Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.`
+
+Microservice ini sudah mendukung bypass otomatis via cookies:
+1. Pasang ekstensi browser **"Get cookies.txt LOCALLY"** (tersedia di Chrome Web Store / Firefox Addons).
+2. Buka tab [youtube.com](https://youtube.com) (pastikan sudah login akun Google biasa).
+3. Klik ikon ekstensi tersebut dan tekan **Export** untuk mengunduh berkas `cookies.txt`.
+4. Buka berkas `cookies.txt` dengan Notepad / Text Editor, lalu salin seluruh isinya.
+5. Di dashboard **Railway** (atau VPS):
+   - Masuk ke tab **Variables**.
+   - Tambahkan variabel:
+     - Nama: **`YOUTUBE_COOKIES`**
+     - Nilai: *(Tempel seluruh isi teks cookies.txt di sini)*
+6. Railway akan merestart service secara otomatis. Service akan mendeteksi cookies dan semua video YouTube akan langsung ter-stream tanpa pernah diblokir lagi!
+

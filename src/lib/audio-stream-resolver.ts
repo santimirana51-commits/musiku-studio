@@ -4,6 +4,8 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
+import path from "path";
+import os from "os";
 
 const execFileAsync = promisify(execFile);
 
@@ -66,26 +68,94 @@ export function extractExpiryMs(url: string, defaultTtlMs = DEFAULT_CACHE_TTL_MS
   return Date.now() + defaultTtlMs;
 }
 
+export function setupCookiesFile(): string | null {
+  if (process.env.YOUTUBE_COOKIES && process.env.YOUTUBE_COOKIES.trim().length > 0) {
+    const raw = process.env.YOUTUBE_COOKIES.trim();
+    let content = raw;
+    if (!raw.includes("\n") && !raw.startsWith("#") && raw.length > 20) {
+      try {
+        const decoded = Buffer.from(raw, "base64").toString("utf-8");
+        if (decoded.includes("youtube.com") || decoded.includes("# Netscape")) {
+          content = decoded;
+        }
+      } catch {}
+    }
+    const targetPath = path.join(os.tmpdir(), "youtube_cookies.txt");
+    try {
+      fs.writeFileSync(targetPath, content, { encoding: "utf-8", mode: 0o600 });
+      return targetPath;
+    } catch (err) {
+      console.warn("[Stream API] Gagal menulis YOUTUBE_COOKIES:", err);
+    }
+  }
+
+  const customPath = process.env.YOUTUBE_COOKIES_PATH || process.env.COOKIES_FILE;
+  if (customPath && fs.existsSync(customPath)) {
+    return customPath;
+  }
+
+  const localCandidates = [
+    path.join(process.cwd(), "cookies.txt"),
+    path.join(os.tmpdir(), "cookies.txt"),
+  ];
+  for (const c of localCandidates) {
+    try {
+      if (fs.existsSync(c) && fs.statSync(c).size > 0) {
+        return c;
+      }
+    } catch {}
+  }
+  return null;
+}
+
 /**
  * Ekstraksi stream audio menggunakan yt-dlp lokal dengan optimasi bypass dan format m4a (AAC)
  */
 export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
   const binary = findYtDlpBinary();
   const videoTarget = `https://www.youtube.com/watch?v=${videoId}`;
+  const cookiesPath = setupCookiesFile();
+  const nodeRuntime = process.execPath || "node";
 
+  const baseArgs = [
+    "--no-warnings",
+    "--geo-bypass",
+    "--force-ipv4",
+    "--no-check-certificates",
+    "--js-runtimes",
+    `node:${nodeRuntime}`,
+    "-g",
+    "-f",
+    "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
+  ];
+
+  if (cookiesPath) {
+    baseArgs.push("--cookies", cookiesPath);
+  }
+
+  // Percobaan 1: Menggunakan chain extractor modern bawaan yt-dlp
+  try {
+    const { stdout } = await execFileAsync(binary, [...baseArgs, videoTarget], {
+      timeout: 15000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+
+    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
+    if (resolvedUrl && resolvedUrl.startsWith("http")) {
+      return resolvedUrl;
+    }
+  } catch (err) {
+    console.warn("[Stream API] yt-dlp default resolution failed:", err);
+  }
+
+  // Percobaan 2: Fallback dengan client mweb
   try {
     const { stdout } = await execFileAsync(
       binary,
       [
-        "--no-warnings",
-        "--geo-bypass",
-        "--force-ipv4",
-        "--no-check-certificates",
+        ...baseArgs,
         "--extractor-args",
-        "youtube:player_client=android,web",
-        "-g",
-        "-f",
-        "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
+        "youtube:player_client=mweb,android",
         videoTarget,
       ],
       { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
@@ -96,8 +166,9 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
       return resolvedUrl;
     }
   } catch (err) {
-    console.warn("[Stream API] yt-dlp resolution failed:", err);
+    console.warn("[Stream API] yt-dlp fallback resolution failed:", err);
   }
+
   return null;
 }
 

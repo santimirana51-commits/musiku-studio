@@ -8,6 +8,8 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const { URL } = require("url");
 const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
 const execFileAsync = promisify(execFile);
 
@@ -70,24 +72,97 @@ function extractExpiryMs(url) {
 }
 
 /**
+ * Menyiapkan file cookies jika disediakan via environment variable atau file lokal
+ */
+function setupCookiesFile() {
+  if (process.env.YOUTUBE_COOKIES && process.env.YOUTUBE_COOKIES.trim().length > 0) {
+    const raw = process.env.YOUTUBE_COOKIES.trim();
+    let content = raw;
+    if (!raw.includes("\n") && !raw.startsWith("#") && raw.length > 20) {
+      try {
+        const decoded = Buffer.from(raw, "base64").toString("utf-8");
+        if (decoded.includes("youtube.com") || decoded.includes("# Netscape")) {
+          content = decoded;
+        }
+      } catch {}
+    }
+    const targetPath = path.join(os.tmpdir(), "youtube_cookies.txt");
+    try {
+      fs.writeFileSync(targetPath, content, { encoding: "utf-8", mode: 0o600 });
+      return targetPath;
+    } catch (err) {
+      console.warn("[StreamProxy] Gagal menulis YOUTUBE_COOKIES ke disk:", err.message);
+    }
+  }
+
+  const customPath = process.env.YOUTUBE_COOKIES_PATH || process.env.COOKIES_FILE;
+  if (customPath && fs.existsSync(customPath)) {
+    return customPath;
+  }
+
+  const localCandidates = [
+    path.join(__dirname, "cookies.txt"),
+    "/app/cookies.txt",
+    path.join(os.tmpdir(), "cookies.txt"),
+  ];
+  for (const candidate of localCandidates) {
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
+        return candidate;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+/**
  * Resolusi URL stream langsung via yt-dlp
  */
 async function resolveViaYtDlp(videoId) {
   const binary = findYtDlpBinary();
   const target = `https://www.youtube.com/watch?v=${videoId}`;
+  const cookiesPath = setupCookiesFile();
+  const nodeRuntime = process.execPath || "node";
+
+  const baseArgs = [
+    "--no-warnings",
+    "--geo-bypass",
+    "--force-ipv4",
+    "--no-check-certificates",
+    "--js-runtimes",
+    `node:${nodeRuntime}`,
+    "-g",
+    "-f",
+    "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
+  ];
+
+  if (cookiesPath) {
+    baseArgs.push("--cookies", cookiesPath);
+  }
+
+  // Percobaan 1: Menggunakan chain extractor modern bawaan yt-dlp (visionos/default)
+  try {
+    const { stdout } = await execFileAsync(binary, [...baseArgs, target], {
+      timeout: 15000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
+    if (resolvedUrl && resolvedUrl.startsWith("http")) {
+      return resolvedUrl;
+    }
+  } catch (err) {
+    console.warn(`[StreamProxy] yt-dlp default failed for ${videoId}:`, err.message);
+  }
+
+  // Percobaan 2: Fallback dengan client mweb jika default dibatasi
   try {
     const { stdout } = await execFileAsync(
       binary,
       [
-        "--no-warnings",
-        "--geo-bypass",
-        "--force-ipv4",
-        "--no-check-certificates",
+        ...baseArgs,
         "--extractor-args",
-        "youtube:player_client=android,web",
-        "-g",
-        "-f",
-        "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
+        "youtube:player_client=mweb,android",
         target,
       ],
       { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
@@ -97,8 +172,9 @@ async function resolveViaYtDlp(videoId) {
       return resolvedUrl;
     }
   } catch (err) {
-    console.warn(`[StreamProxy] yt-dlp failed for ${videoId}:`, err.message);
+    console.warn(`[StreamProxy] yt-dlp fallback (mweb,android) failed for ${videoId}:`, err.message);
   }
+
   return null;
 }
 
@@ -439,9 +515,11 @@ for (const p of PORTS_TO_LISTEN) {
   }
 }
 
+const detectedCookies = setupCookiesFile();
 console.log(`======================================================`);
 console.log(`🎵 MusikKu Stream Proxy Microservice`);
 console.log(`🔍 yt-dlp binary : ${findYtDlpBinary()}`);
+console.log(`🍪 Cookies file  : ${detectedCookies || "none (atur YOUTUBE_COOKIES di Railway jika ada bot-check)"}`);
 console.log(`🌐 Allowed origin : ${ALLOWED_ORIGIN}`);
 console.log(`======================================================`);
 
