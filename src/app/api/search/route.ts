@@ -80,28 +80,65 @@ export async function GET(req: Request) {
   if (pageToken) yt.searchParams.set("pageToken", pageToken);
   yt.searchParams.set("key", apiKey);
 
-  let res: Response;
+  // Helper fallback search via Railway Stream Proxy
+  const tryProxyFallback = async () => {
+    const proxyBase = process.env.STREAM_PROXY_URL?.trim() || process.env.NEXT_PUBLIC_STREAM_PROXY_URL?.trim();
+    if (!proxyBase) return null;
+    try {
+      const cleanProxy = proxyBase.replace(/\/+$/, "");
+      const proxyRes = await fetch(`${cleanProxy}/api/search?q=${encodeURIComponent(q)}&maxResults=${maxResults ?? 12}`, {
+        next: { revalidate: 60 },
+      });
+      if (proxyRes.ok) {
+        const proxyJson = await proxyRes.json();
+        if (Array.isArray(proxyJson.items) && proxyJson.items.length > 0) {
+          return proxyJson;
+        }
+      }
+    } catch {}
+    return null;
+  };
+
+  let res: Response | null = null;
   try {
     res = await fetch(yt.toString(), { next: { revalidate: 60 } });
   } catch {
+    const fallback = await tryProxyFallback();
+    if (fallback) {
+      cache.set(cacheKey, { at: Date.now(), body: fallback });
+      return NextResponse.json(fallback, { headers: { "X-Search-Source": "proxy-fallback" } });
+    }
     return NextResponse.json({ error: "Gagal menghubungi YouTube. Periksa koneksi lalu coba lagi." }, { status: 502 });
   }
 
-  if (res.status === 403) {
+  if (res && res.status === 403) {
     let detail = "";
     try {
       const j = await res.json();
-      detail = j?.error?.errors?.[0]?.reason ?? "";
+      detail = j?.error?.errors?.[0]?.reason ?? j?.error?.message ?? "";
     } catch {}
+
+    const fallback = await tryProxyFallback();
+    if (fallback) {
+      cache.set(cacheKey, { at: Date.now(), body: fallback });
+      return NextResponse.json(fallback, { headers: { "X-Search-Source": "proxy-fallback" } });
+    }
+
     if (detail.includes("quota")) {
       return NextResponse.json(
         { error: "Kuota YouTube API habis. Pantau di Google Cloud Console → APIs & Services → Quotas, lalu coba lagi besok atau naikkan kuota." },
         { status: 429 }
       );
     }
-    return NextResponse.json({ error: "Akses YouTube ditolak (403). Periksa API key dan pembatasan domain." }, { status: 502 });
+    return NextResponse.json({ error: "Akses YouTube ditolak (403). Periksa API key dan pembatasan domain di Google Cloud Console.", detail }, { status: 502 });
   }
-  if (!res.ok) {
+
+  if (res && !res.ok) {
+    const fallback = await tryProxyFallback();
+    if (fallback) {
+      cache.set(cacheKey, { at: Date.now(), body: fallback });
+      return NextResponse.json(fallback, { headers: { "X-Search-Source": "proxy-fallback" } });
+    }
     return NextResponse.json({ error: `YouTube mengembalikan error ${res.status}. Coba lagi nanti.` }, { status: 502 });
   }
 

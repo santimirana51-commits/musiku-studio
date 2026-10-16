@@ -314,6 +314,57 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Search Endpoint: /api/search?q=...&maxResults=...
+  if (pathname === "/api/search") {
+    const q = reqUrl.searchParams.get("q");
+    const maxResults = Math.min(Math.max(parseInt(reqUrl.searchParams.get("maxResults") || "12", 10), 1), 30);
+    if (!q || q.trim().length === 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Parameter q wajib diisi." }));
+      return;
+    }
+
+    try {
+      const binary = findYtDlpBinary();
+      const { stdout } = await execFileAsync(
+        binary,
+        [
+          "--no-warnings",
+          "--geo-bypass",
+          "--flat-playlist",
+          "--dump-single-json",
+          `ytsearch${maxResults}:${q.trim()}`,
+        ],
+        { timeout: 12000, maxBuffer: 10 * 1024 * 1024 }
+      );
+      const parsed = JSON.parse(stdout);
+      const entries = parsed.entries || [];
+      const items = entries.map((e) => ({
+        videoId: e.id,
+        title: e.title || "(tanpa judul)",
+        channelTitle: e.channel || e.uploader || "Unknown",
+        channelId: e.channel_id,
+        thumbnail:
+          e.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${e.id}/mqdefault.jpg`,
+        publishedAt: e.upload_date,
+        description: e.description,
+      }));
+
+      const payload = JSON.stringify({ items, totalResults: items.length });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=180",
+      });
+      res.end(payload);
+      return;
+    } catch (err) {
+      console.warn(`[StreamProxy] Search failed for ${q}:`, err.message);
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Gagal melakukan pencarian via proxy.", detail: err.message }));
+      return;
+    }
+  }
+
   // Audio Stream Endpoint: /api/stream?v=...
   if (pathname === "/api/stream") {
     const videoId = reqUrl.searchParams.get("v");
