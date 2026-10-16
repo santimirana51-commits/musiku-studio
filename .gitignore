@@ -7,3 +7,6 @@ coverage
 tsconfig.tsbuildinfo
 src-tauri/target/debug/incremental/
 Alexis-EQ/
+*.cookies.txt
+cookies.txt
+*cookie*.txt

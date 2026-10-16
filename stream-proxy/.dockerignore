@@ -5,3 +5,5 @@ npm-debug.log
 README.md
 setup-vps.sh
 docker-compose.yml
+cookies.txt
+*cookie*.txt
