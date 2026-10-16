@@ -1,16 +1,16 @@
 # Multi-stage / lightweight Alpine image dengan yt-dlp + ffmpeg + Python3
 FROM node:20-alpine
 
-# Pasang dependensi runtime (Python 3, ffmpeg, curl)
+# Pasang dependensi runtime (Python 3, py3-pip, ffmpeg, curl, ca-certificates)
 RUN apk add --no-cache \
     python3 \
+    py3-pip \
     ffmpeg \
     curl \
     ca-certificates
 
-# Unduh binary yt-dlp resmi terbaru langsung dari GitHub Releases
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+# Pasang yt-dlp dan yt-dlp-ejs resmi via pip untuk ketersediaan EJS challenge solver
+RUN pip install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs
 
 WORKDIR /app
 

@@ -18,9 +18,11 @@ const HOST = process.env.HOST || "0.0.0.0";
 const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES || "120", 10)) * 60 * 1000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
-// In-memory URL cache: videoId -> { url: string, expiresAt: number }
+// In-memory URL cache: videoId -> { url: string, expiresAt: number, formatId?: string, ext?: string }
 const streamCache = new Map();
-const lastFailureReason = new Map();
+
+// In-memory diagnostic log: videoId -> { errorType: string, reason: string, timestamp: number }
+const lastFailureDiagnostics = new Map();
 
 // CORS Headers standar untuk Web Audio API & Range Requests
 const CORS_HEADERS = {
@@ -30,6 +32,19 @@ const CORS_HEADERS = {
   "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Type",
   "Access-Control-Max-Age": "86400",
 };
+
+/**
+ * Sanitasi string log untuk memastikan cookie, token, dan kredensial tidak pernah dicatat (Requirement 9)
+ */
+function sanitizeLog(message) {
+  if (typeof message !== "string") {
+    message = String(message || "");
+  }
+  return message
+    .replace(/(cookies|cookie):\s*([^\n;]+)/gi, "$1: [REDACTED]")
+    .replace(/(?:([?&]|\b)(?:sig|lsig|token|po_token|key|auth|session)=)[^\s&;,]+/gi, "$1=[REDACTED]")
+    .replace(/(https?:\/\/[^\s"'<>]+\/videoplayback\?)[^\s"'<>]+/gi, "$1[STREAM_PARAMS_REDACTED]");
+}
 
 /**
  * Mencari path binary yt-dlp pada sistem
@@ -42,6 +57,7 @@ function findYtDlpBinary() {
     "/usr/local/bin/yt-dlp",
     "/usr/bin/yt-dlp",
     "/root/.local/bin/yt-dlp",
+    "/home/miran/.local/bin/yt-dlp",
     "/home/linuxbrew/.linuxbrew/bin/yt-dlp",
     "yt-dlp",
   ];
@@ -55,6 +71,13 @@ function findYtDlpBinary() {
 }
 
 /**
+ * Mendapatkan lokasi runtime Node.js untuk challenge solver yt-dlp EJS
+ */
+function getNodeRuntime() {
+  return process.execPath || "node";
+}
+
+/**
  * Ekstraksi timestamp expire dari query param URL googlevideo
  */
 function extractExpiryMs(url) {
@@ -64,6 +87,7 @@ function extractExpiryMs(url) {
     if (expireParam) {
       const expireSec = parseInt(expireParam, 10);
       if (!isNaN(expireSec) && expireSec > 0) {
+        // Beri toleransi 5 menit sebelum batas waktu kedaluwarsa URL
         const expiryTime = expireSec * 1000 - 5 * 60 * 1000;
         if (expiryTime > Date.now()) return expiryTime;
       }
@@ -92,7 +116,7 @@ function setupCookiesFile() {
       fs.writeFileSync(targetPath, content, { encoding: "utf-8", mode: 0o600 });
       return targetPath;
     } catch (err) {
-      console.warn("[StreamProxy] Gagal menulis YOUTUBE_COOKIES ke disk:", err.message);
+      console.warn("[StreamProxy] Gagal menulis YOUTUBE_COOKIES ke disk:", sanitizeLog(err.message));
     }
   }
 
@@ -118,75 +142,247 @@ function setupCookiesFile() {
 }
 
 /**
- * Resolusi URL stream langsung via yt-dlp
+ * Strategi pemilihan format audio cerdas (Requirement 4).
+ * Memverifikasi format yang dikembalikan extractor tanpa mengunci format ID tertentu.
+ * Mengutamakan format audio m4a (AAC) dan webm (Opus), dengan fallback ke video+audio jika hanya itu yang tersedia.
+ */
+function selectBestAudioFormat(formats) {
+  if (!Array.isArray(formats) || formats.length === 0) return null;
+
+  // Filter format yang memiliki direct URL HTTP/HTTPS (abaikan manifest m3u8 dan storyboard)
+  const validCandidates = formats.filter((f) => {
+    if (!f || typeof f.url !== "string") return false;
+    if (!f.url.startsWith("http")) return false;
+    if (f.url.includes("manifest/hls") || f.protocol === "m3u8_native") return false;
+    if (f.ext === "mhtml") return false;
+    // Harus memiliki audio stream
+    return Boolean(f.acodec && f.acodec !== "none");
+  });
+
+  if (validCandidates.length === 0) {
+    // Toleransi: jika tidak ada format dengan metadata acodec eksplisit, cari format apa pun yang memiliki URL langsung
+    const anyHttp = formats.filter(
+      (f) => f && typeof f.url === "string" && f.url.startsWith("http") && !f.url.includes("manifest/hls") && f.ext !== "mhtml"
+    );
+    if (anyHttp.length > 0) {
+      return {
+        url: anyHttp[0].url,
+        formatId: anyHttp[0].format_id || "unknown",
+        ext: anyHttp[0].ext || "mp4",
+        acodec: anyHttp[0].acodec || "unknown",
+        vcodec: anyHttp[0].vcodec || "none",
+        bitrate: anyHttp[0].abr || anyHttp[0].tbr || 0,
+      };
+    }
+    return null;
+  }
+
+  // Beri skor pada setiap kandidat
+  const scored = validCandidates.map((f) => {
+    let score = 0;
+    const isStandaloneAudio = !f.vcodec || f.vcodec === "none";
+
+    // Standalone audio mendapat prioritas tertinggi
+    if (isStandaloneAudio) {
+      score += 1000;
+    }
+
+    // AAC (m4a/mp4a) memiliki kompatibilitas 100% untuk HTML5 Audio & Web Audio API
+    const isAac = f.ext === "m4a" || (typeof f.acodec === "string" && f.acodec.includes("mp4a"));
+    const isOpus = f.ext === "webm" || (typeof f.acodec === "string" && f.acodec.includes("opus"));
+
+    if (isAac) {
+      score += 500;
+    } else if (isOpus) {
+      score += 400;
+    } else {
+      score += 200;
+    }
+
+    // Tambahkan bitrate sebagai penentu kualitas (format 140 / 251 vs 139 / 249)
+    const bitrate = Number(f.abr || f.tbr) || 0;
+    score += Math.min(bitrate, 320);
+
+    return {
+      format: f,
+      score,
+      bitrate,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0].format;
+
+  return {
+    url: best.url,
+    formatId: best.format_id,
+    ext: best.ext,
+    acodec: best.acodec,
+    vcodec: best.vcodec,
+    bitrate: best.abr || best.tbr || 0,
+  };
+}
+
+/**
+ * Mengklasifikasikan error ekstraksi untuk fallback yang tepat (Requirement 5 & 6)
+ */
+function classifyExtractionError(errText) {
+  const text = String(errText || "");
+  if (/needs to be reloaded|UNPLAYABLE|tv_downgraded/i.test(text)) {
+    return "PAGE_RELOAD";
+  }
+  if (/Requested format is not available|Only images are available/i.test(text)) {
+    return "FORMAT_UNAVAILABLE";
+  }
+  if (/Sign in to confirm you’re not a bot|bot-check|captcha/i.test(text)) {
+    return "BOT_CHECK";
+  }
+  if (/video is unavailable|private video|removed by the uploader/i.test(text)) {
+    return "UNAVAILABLE";
+  }
+  if (/timeout|timed out|ETIMEDOUT/i.test(text)) {
+    return "TIMEOUT";
+  }
+  return "UNKNOWN";
+}
+
+/**
+ * Resolusi URL stream langsung via yt-dlp dengan error-aware fallback (Requirement 3, 4, 5, 6)
  */
 async function resolveViaYtDlp(videoId) {
   const binary = findYtDlpBinary();
   const target = `https://www.youtube.com/watch?v=${videoId}`;
   const cookiesPath = setupCookiesFile();
-  const nodeRuntime = process.execPath || "node";
+  const nodeRuntime = getNodeRuntime();
 
+  // Base arguments: TLS keamanan diaktifkan (tanpa --no-check-certificates), JS runtime dihubungkan
   const baseArgs = [
     "--no-warnings",
     "--geo-bypass",
     "--force-ipv4",
-    "--no-check-certificates",
     "--js-runtimes",
     `node:${nodeRuntime}`,
     "--remote-components",
     "ejs:github",
-    "-g",
-    "-f",
-    "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
   ];
 
   if (cookiesPath) {
     baseArgs.push("--cookies", cookiesPath);
   }
 
-  // Percobaan 1: Menggunakan chain extractor modern bawaan yt-dlp (visionos/default)
+  // PERCOBAAN 1: Chain multi-client modern (visionos, android, web_embedded) + dump-single-json
+  let initialErrorType = "NONE";
   try {
-    const { stdout } = await execFileAsync(binary, [...baseArgs, target], {
-      timeout: 15000,
-      maxBuffer: 10 * 1024 * 1024,
+    const attempt1Args = [
+      ...baseArgs,
+      "--extractor-args",
+      "youtube:player_client=visionos,android,web_embedded",
+      "--dump-single-json",
+      target,
+    ];
+
+    const { stdout } = await execFileAsync(binary, attempt1Args, {
+      timeout: 14000,
+      maxBuffer: 15 * 1024 * 1024,
     });
-    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
-    if (resolvedUrl && resolvedUrl.startsWith("http")) {
-      return resolvedUrl;
+
+    const parsed = JSON.parse(stdout);
+    const selected = selectBestAudioFormat(parsed.formats);
+
+    if (selected && selected.url) {
+      return {
+        url: selected.url,
+        ext: selected.ext,
+        formatId: selected.formatId,
+      };
     }
   } catch (err) {
     const detail = (err.stderr || err.stdout || err.message || "").trim();
-    lastFailureReason.set(videoId, detail);
-    console.warn(`[StreamProxy] yt-dlp default failed for ${videoId}:`, detail);
+    initialErrorType = classifyExtractionError(detail);
+    const sanitizedMsg = sanitizeLog(detail.split("\n")[0] || detail);
+
+    lastFailureDiagnostics.set(videoId, {
+      errorType: initialErrorType,
+      reason: sanitizedMsg,
+      timestamp: Date.now(),
+    });
+
+    console.warn(
+      `[StreamProxy] yt-dlp primary attempt failed for ${videoId} [Type: ${initialErrorType}]:`,
+      sanitizedMsg
+    );
   }
 
-  // Percobaan 2: Fallback dengan client mweb jika default dibatasi
+  // PERCOBAAN 2: Fallback terarah sesuai klasifikasi error (Jangan mengulang konfigurasi yang sama)
   try {
-    const { stdout } = await execFileAsync(
-      binary,
-      [
-        ...baseArgs,
+    const attempt2Args = [...baseArgs];
+
+    if (initialErrorType === "PAGE_RELOAD") {
+      // Jika terjadi tantangan web reload, gunakan client embedded & android vr murni yang tidak kena challenge reload
+      attempt2Args.push(
         "--extractor-args",
-        "youtube:player_client=mweb,android",
-        target,
-      ],
-      { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
-    );
-    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
-    if (resolvedUrl && resolvedUrl.startsWith("http")) {
-      return resolvedUrl;
+        "youtube:player_client=android_vr,web_embedded",
+        "--dump-single-json",
+        target
+      );
+      const { stdout } = await execFileAsync(binary, attempt2Args, {
+        timeout: 12000,
+        maxBuffer: 15 * 1024 * 1024,
+      });
+      const parsed = JSON.parse(stdout);
+      const selected = selectBestAudioFormat(parsed.formats);
+      if (selected && selected.url) {
+        return {
+          url: selected.url,
+          ext: selected.ext,
+          formatId: selected.formatId,
+        };
+      }
+    } else {
+      // Jika format tidak tersedia atau error lainnya, gunakan format selection fleksibel dengan -g
+      attempt2Args.push(
+        "--extractor-args",
+        "youtube:player_client=android,ios,web_embedded",
+        "-f",
+        "ba[ext=m4a]/ba[ext=mp4]/ba/b[ext=mp4]/b/best",
+        "-g",
+        target
+      );
+      const { stdout } = await execFileAsync(binary, attempt2Args, {
+        timeout: 12000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
+      if (resolvedUrl && resolvedUrl.startsWith("http")) {
+        return {
+          url: resolvedUrl,
+          ext: resolvedUrl.includes("mime=audio%2Fwebm") ? "webm" : "m4a",
+          formatId: "fallback_g",
+        };
+      }
     }
   } catch (err) {
     const detail = (err.stderr || err.stdout || err.message || "").trim();
-    lastFailureReason.set(videoId, detail);
-    console.warn(`[StreamProxy] yt-dlp fallback (mweb,android) failed for ${videoId}:`, detail);
+    const secondErrorType = classifyExtractionError(detail);
+    const sanitizedMsg = sanitizeLog(detail.split("\n")[0] || detail);
+
+    lastFailureDiagnostics.set(videoId, {
+      errorType: secondErrorType,
+      reason: sanitizedMsg,
+      timestamp: Date.now(),
+    });
+
+    console.warn(
+      `[StreamProxy] yt-dlp secondary fallback failed for ${videoId} [Type: ${secondErrorType}]:`,
+      sanitizedMsg
+    );
   }
 
   return null;
 }
 
 /**
- * Fallback multi-instance (Invidious & Piped)
+ * Fallback multi-instance pihak ketiga (Invidious & Piped) dengan timeout cepat
  */
 async function resolveViaFallback(videoId) {
   const instances = [
@@ -227,7 +423,7 @@ async function resolveViaFallback(videoId) {
             if (aM !== bM) return bM - aM;
             return (b.bitrate || 0) - (a.bitrate || 0);
           });
-          return audios[0].url;
+          return { url: audios[0].url, ext: "m4a", formatId: "invidious" };
         }
       } else {
         const audios = data.audioStreams;
@@ -238,7 +434,7 @@ async function resolveViaFallback(videoId) {
             if (aM !== bM) return bM - aM;
             return (b.bitrate || 0) - (a.bitrate || 0);
           });
-          return audios[0].url;
+          return { url: audios[0].url, ext: "m4a", formatId: "piped" };
         }
       }
     } catch {}
@@ -253,7 +449,7 @@ async function getDirectAudioUrl(videoId, forceFresh = false) {
   if (!forceFresh) {
     const cached = streamCache.get(videoId);
     if (cached && cached.expiresAt > Date.now()) {
-      return cached.url;
+      return cached;
     }
   }
 
@@ -262,10 +458,16 @@ async function getDirectAudioUrl(videoId, forceFresh = false) {
     resolved = await resolveViaFallback(videoId);
   }
 
-  if (resolved) {
-    const expiresAt = extractExpiryMs(resolved);
-    streamCache.set(videoId, { url: resolved, expiresAt });
-    return resolved;
+  if (resolved && resolved.url) {
+    const expiresAt = extractExpiryMs(resolved.url);
+    const entry = {
+      url: resolved.url,
+      expiresAt,
+      ext: resolved.ext || "m4a",
+      formatId: resolved.formatId || "unknown",
+    };
+    streamCache.set(videoId, entry);
+    return entry;
   }
   return null;
 }
@@ -289,7 +491,7 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Healthcheck endpoint
+  // Healthcheck endpoint (Requirement 2 & 3)
   if (pathname === "/" || pathname === "/health") {
     let ytVersion = "unknown";
     try {
@@ -300,8 +502,10 @@ async function handleRequest(req, res) {
     const payload = JSON.stringify({
       status: "ok",
       service: "musiku-stream-proxy",
-      version: "1.0.0",
+      version: "1.1.0",
       ytDlpVersion: ytVersion,
+      nodeVersion: process.version,
+      nodeRuntime: getNodeRuntime(),
       cachedVideos: streamCache.size,
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
@@ -311,6 +515,28 @@ async function handleRequest(req, res) {
       "Content-Length": Buffer.byteLength(payload),
     });
     res.end(payload);
+    return;
+  }
+
+  // Diagnostic endpoint untuk memeriksa status ekstraksi ID video terakhir
+  if (pathname === "/api/diagnostics") {
+    const videoId = reqUrl.searchParams.get("v");
+    if (!videoId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Parameter videoId ('v') wajib diisi." }));
+      return;
+    }
+    const diag = lastFailureDiagnostics.get(videoId);
+    const inCache = streamCache.has(videoId);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        videoId,
+        hasCachedStream: inCache,
+        lastFailure: diag || null,
+        timestamp: new Date().toISOString(),
+      })
+    );
     return;
   }
 
@@ -331,6 +557,7 @@ async function handleRequest(req, res) {
         [
           "--no-warnings",
           "--geo-bypass",
+          "--force-ipv4",
           "--flat-playlist",
           "--dump-single-json",
           `ytsearch${maxResults}:${q.trim()}`,
@@ -358,9 +585,9 @@ async function handleRequest(req, res) {
       res.end(payload);
       return;
     } catch (err) {
-      console.warn(`[StreamProxy] Search failed for ${q}:`, err.message);
+      console.warn(`[StreamProxy] Search failed for ${q}:`, sanitizeLog(err.message));
       res.writeHead(502, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Gagal melakukan pencarian via proxy.", detail: err.message }));
+      res.end(JSON.stringify({ error: "Gagal melakukan pencarian via proxy." }));
       return;
     }
   }
@@ -378,35 +605,45 @@ async function handleRequest(req, res) {
     const isHead = req.method === "HEAD";
     const range = req.headers["range"];
     const forwardHeaders = {
-      "User-Agent": req.headers["user-agent"] || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "User-Agent":
+        req.headers["user-agent"] ||
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       Accept: "*/*",
     };
     if (range) {
       forwardHeaders["range"] = range;
     }
 
-    let directUrl = await getDirectAudioUrl(videoId);
-    if (!directUrl) {
-      const reason = lastFailureReason.get(videoId) || "Video stream extraction failed";
+    let streamEntry = await getDirectAudioUrl(videoId);
+    if (!streamEntry || !streamEntry.url) {
+      const diag = lastFailureDiagnostics.get(videoId);
       const errPayload = JSON.stringify({
         error: "Gagal mengekstrak aliran audio untuk video ini.",
         videoId,
-        reason,
+        errorType: diag?.errorType || "UNKNOWN",
+        reason: diag?.reason || "Extractor failed to resolve stream URL",
       });
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(errPayload);
       return;
     }
 
-    const fetchStream = (url, redirectCount = 0) =>
+    // Flag untuk mendeteksi apakah client menutup koneksi terlebih dahulu (Requirement 7)
+    let isClientClosed = false;
+
+    const fetchStream = (targetUrl, redirectCount = 0) =>
       new Promise((resolve, reject) => {
         if (redirectCount > 5) {
           return reject(new Error("Terlalu banyak redirect upstream"));
         }
+        if (isClientClosed) {
+          return reject(new Error("Request client sudah dibatalkan"));
+        }
+
         try {
-          const client = url.startsWith("https") ? https : http;
+          const client = targetUrl.startsWith("https") ? https : http;
           const upstreamReq = client.request(
-            url,
+            targetUrl,
             {
               method: isHead ? "HEAD" : "GET",
               headers: forwardHeaders,
@@ -417,11 +654,11 @@ async function handleRequest(req, res) {
                 [301, 302, 303, 307, 308].includes(upstreamRes.statusCode) &&
                 upstreamRes.headers.location
               ) {
-                const nextUrl = new URL(upstreamRes.headers.location, url).toString();
+                const nextUrl = new URL(upstreamRes.headers.location, targetUrl).toString();
                 upstreamRes.destroy();
                 return resolve(fetchStream(nextUrl, redirectCount + 1));
               }
-              resolve(upstreamRes);
+              resolve({ upstreamReq, upstreamRes });
             }
           );
 
@@ -429,52 +666,80 @@ async function handleRequest(req, res) {
             upstreamReq.destroy();
             reject(new Error("Upstream timeout"));
           });
-          upstreamReq.on("error", reject);
+
+          upstreamReq.on("error", (err) => {
+            if (isClientClosed) return;
+            reject(err);
+          });
+
           upstreamReq.end();
+
+          // Hubungkan pembatalan client dengan request upstream
+          req.once("close", () => {
+            isClientClosed = true;
+            if (!upstreamReq.destroyed) upstreamReq.destroy();
+          });
         } catch (err) {
           reject(err);
         }
       });
 
-    let upstreamRes = null;
+    let conn = null;
     try {
-      upstreamRes = await fetchStream(directUrl);
-    } catch {
+      conn = await fetchStream(streamEntry.url);
+    } catch (err) {
+      if (isClientClosed) return;
+
+      // Jangan retry jika error disebabkan oleh pembatalan client
+      if (err.message && (err.message.includes("dibatalkan") || err.message.includes("aborted"))) {
+        return;
+      }
+
       // Refresh cache jika request pertama gagal/timeout
       streamCache.delete(videoId);
-      const freshUrl = await getDirectAudioUrl(videoId, true);
-      if (freshUrl) {
-        directUrl = freshUrl;
+      const freshEntry = await getDirectAudioUrl(videoId, true);
+      if (freshEntry && freshEntry.url) {
+        streamEntry = freshEntry;
         try {
-          upstreamRes = await fetchStream(directUrl);
+          conn = await fetchStream(streamEntry.url);
         } catch {}
       }
     }
 
     // Refresh jika upstream status expired (403, 404, 410)
-    if (upstreamRes && [403, 404, 410].includes(upstreamRes.statusCode)) {
+    if (conn && conn.upstreamRes && [403, 404, 410].includes(conn.upstreamRes.statusCode)) {
+      conn.upstreamRes.destroy();
       streamCache.delete(videoId);
-      const freshUrl = await getDirectAudioUrl(videoId, true);
-      if (freshUrl) {
-        directUrl = freshUrl;
+      const freshEntry = await getDirectAudioUrl(videoId, true);
+      if (freshEntry && freshEntry.url) {
+        streamEntry = freshEntry;
         try {
-          upstreamRes = await fetchStream(directUrl);
+          conn = await fetchStream(streamEntry.url);
         } catch {}
       }
     }
 
-    if (!upstreamRes) {
+    if (!conn || !conn.upstreamRes) {
+      if (isClientClosed) return;
       streamCache.delete(videoId);
-      const errPayload = JSON.stringify({ error: "Koneksi ke aliran audio timeout." });
+      const errPayload = JSON.stringify({ error: "Koneksi ke aliran audio upstream gagal atau timeout." });
       res.writeHead(504, { "Content-Type": "application/json" });
       res.end(errPayload);
       return;
     }
 
-    // Response header forwarding
+    const { upstreamRes } = conn;
+
+    // Tentukan Content-Type yang tepat untuk Web Audio API
+    let contentType = upstreamRes.headers["content-type"];
+    if (!contentType || contentType === "application/octet-stream") {
+      contentType = streamEntry.ext === "webm" ? "audio/webm" : "audio/mp4";
+    }
+
+    // Response header forwarding (Requirement 8)
     const responseHeaders = {
       ...CORS_HEADERS,
-      "Content-Type": upstreamRes.headers["content-type"] || "audio/mp4",
+      "Content-Type": contentType,
       "Accept-Ranges": "bytes",
       "Cache-Control": "public, max-age=3600, s-maxage=3600",
     };
@@ -496,20 +761,42 @@ async function handleRequest(req, res) {
     // Pipe upstream audio chunk langsung ke response client
     upstreamRes.pipe(res);
 
-    // Bersihkan upstream jika client menutup koneksi (misal skip/pause)
+    // Bersihkan upstream jika client menutup koneksi (misal user pause, seek, atau skip track) (Requirement 7 & 8)
     req.on("close", () => {
+      isClientClosed = true;
       if (!upstreamRes.destroyed) {
         upstreamRes.destroy();
       }
     });
 
+    req.on("aborted", () => {
+      isClientClosed = true;
+      if (!upstreamRes.destroyed) {
+        upstreamRes.destroy();
+      }
+    });
+
+    // Penanganan error stream upstream yang membedakan pembatalan client dari error jaringan sejati (Requirement 7)
     upstreamRes.on("error", (err) => {
-      console.warn(`[StreamProxy] Upstream pipe error for ${videoId}:`, err.message);
+      const isClientAborted =
+        isClientClosed ||
+        req.destroyed ||
+        err.message === "aborted" ||
+        err.code === "ERR_STREAM_PREMATURE_CLOSE" ||
+        err.code === "ECONNRESET";
+
+      // Jika client yang membatalkan (user seek / skip), JANGAN catat error, JANGAN hapus cache, JANGAN picu retry
+      if (isClientAborted) {
+        return;
+      }
+
+      console.warn(`[StreamProxy] Upstream pipe error for ${videoId}:`, sanitizeLog(err.message));
       if (!res.headersSent) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Gagal menyalurkan audio upstream." }));
       }
     });
+
     return;
   }
 
@@ -521,7 +808,7 @@ async function handleRequest(req, res) {
 // Inisialisasi HTTP Server
 const server = http.createServer((req, res) => {
   handleRequest(req, res).catch((err) => {
-    console.error("[StreamProxy] Unhandled error:", err);
+    console.error("[StreamProxy] Unhandled error:", sanitizeLog(err.message || String(err)));
     if (!res.headersSent) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Terjadi kesalahan internal server." }));
@@ -535,6 +822,11 @@ setInterval(() => {
   for (const [id, entry] of streamCache.entries()) {
     if (entry.expiresAt <= now) {
       streamCache.delete(id);
+    }
+  }
+  for (const [id, diag] of lastFailureDiagnostics.entries()) {
+    if (now - diag.timestamp > 30 * 60 * 1000) {
+      lastFailureDiagnostics.delete(id);
     }
   }
 }, 30 * 60 * 1000);
@@ -553,48 +845,61 @@ const PORTS_TO_LISTEN = Array.from(
 );
 
 const activeServers = [];
-for (const p of PORTS_TO_LISTEN) {
-  try {
-    const s = http.createServer((req, res) => {
-      handleRequest(req, res).catch((err) => {
-        console.error("[StreamProxy] Unhandled error:", err);
-        if (!res.headersSent) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Terjadi kesalahan internal server." }));
+if (require.main === module) {
+  for (const p of PORTS_TO_LISTEN) {
+    try {
+      const s = http.createServer((req, res) => {
+        handleRequest(req, res).catch((err) => {
+          console.error("[StreamProxy] Unhandled error:", sanitizeLog(err.message || String(err)));
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Terjadi kesalahan internal server." }));
+          }
+        });
+      });
+      s.on("error", (err) => {
+        if (err.code !== "EADDRINUSE") {
+          console.warn(`[StreamProxy] Notice on port ${p}:`, sanitizeLog(err.message));
         }
       });
-    });
-    s.on("error", (err) => {
-      if (err.code !== "EADDRINUSE") {
-        console.warn(`[StreamProxy] Notice on port ${p}:`, err.message);
-      }
-    });
-    s.listen(p, HOST, () => {
-      console.log(`🚀 Server aktif di: http://${HOST}:${p}`);
-    });
-    activeServers.push(s);
-  } catch (err) {
-    // Port sudah terikat
+      s.listen(p, HOST, () => {
+        console.log(`🚀 Server aktif di: http://${HOST}:${p}`);
+      });
+      activeServers.push(s);
+    } catch (err) {
+      // Port sudah terikat
+    }
   }
+
+  const detectedCookies = setupCookiesFile();
+  console.log(`======================================================`);
+  console.log(`🎵 MusikKu Stream Proxy Microservice v1.1.0`);
+  console.log(`🔍 yt-dlp binary : ${findYtDlpBinary()}`);
+  console.log(`⚡ Node runtime  : ${getNodeRuntime()}`);
+  console.log(`🍪 Cookies file  : ${detectedCookies ? "loaded (local)" : "none (atur YOUTUBE_COOKIES di Railway jika diperlukan)"}`);
+  console.log(`🌐 Allowed origin: ${ALLOWED_ORIGIN}`);
+  console.log(`🛡️  TLS Security : STRICT (Certificates verified)`);
+  console.log(`======================================================`);
+
+  // Graceful shutdown
+  process.on("SIGTERM", () => {
+    console.log("[StreamProxy] SIGTERM received, shutting down gracefully...");
+    activeServers.forEach((s) => s.close());
+    setTimeout(() => process.exit(0), 1000);
+  });
+  process.on("SIGINT", () => {
+    console.log("[StreamProxy] SIGINT received, shutting down gracefully...");
+    activeServers.forEach((s) => s.close());
+    setTimeout(() => process.exit(0), 1000);
+  });
 }
 
-const detectedCookies = setupCookiesFile();
-console.log(`======================================================`);
-console.log(`🎵 MusikKu Stream Proxy Microservice`);
-console.log(`🔍 yt-dlp binary : ${findYtDlpBinary()}`);
-console.log(`🍪 Cookies file  : ${detectedCookies || "none (atur YOUTUBE_COOKIES di Railway jika ada bot-check)"}`);
-console.log(`🌐 Allowed origin : ${ALLOWED_ORIGIN}`);
-console.log(`======================================================`);
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("[StreamProxy] SIGTERM received, shutting down gracefully...");
-  activeServers.forEach((s) => s.close());
-  setTimeout(() => process.exit(0), 1000);
-});
-process.on("SIGINT", () => {
-  console.log("[StreamProxy] SIGINT received, shutting down gracefully...");
-  activeServers.forEach((s) => s.close());
-  setTimeout(() => process.exit(0), 1000);
-});
-
+module.exports = {
+  findYtDlpBinary,
+  getNodeRuntime,
+  selectBestAudioFormat,
+  classifyExtractionError,
+  sanitizeLog,
+  extractExpiryMs,
+  handleRequest,
+};

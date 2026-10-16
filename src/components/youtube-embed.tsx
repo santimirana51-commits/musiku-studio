@@ -68,8 +68,20 @@ export function YouTubeEmbed() {
     if (!p) return;
     const isDirectPlaying = directStreamPlayerSingleton.getState() === "playing";
     const isTabConnected = youtubeEqEngineSingleton.getIsConnected();
-    const shouldMuteIframe = isEqSyncRef.current && isDirectPlaying && !isTabConnected;
 
+    if (isTabConnected) {
+      // Tab Audio capture aktif: Jeda directStreamPlayer seketika agar tidak terjadi suara ganda
+      if (directStreamPlayerSingleton.getState() === "playing") {
+        directStreamPlayerSingleton.pause();
+      }
+      try {
+        p.unMute?.();
+        p.setVolume?.(100);
+      } catch {}
+      return;
+    }
+
+    const shouldMuteIframe = isEqSyncRef.current && isDirectPlaying;
     try {
       if (shouldMuteIframe) {
         p.mute?.();
@@ -87,8 +99,11 @@ export function YouTubeEmbed() {
       onState: () => syncAudioMute(),
       onError: () => syncAudioMute(),
     });
-    youtubeEqEngineSingleton.onConnectionChange(() => {
+    youtubeEqEngineSingleton.onConnectionChange((connected) => {
       syncAudioMute();
+      if (connected) {
+        directStreamPlayerSingleton.pause();
+      }
     });
     return () => {
       unsubDirect();

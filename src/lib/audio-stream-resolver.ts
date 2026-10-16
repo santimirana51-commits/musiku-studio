@@ -109,7 +109,7 @@ export function setupCookiesFile(): string | null {
 }
 
 /**
- * Ekstraksi stream audio menggunakan yt-dlp lokal dengan optimasi bypass dan format m4a (AAC)
+ * Ekstraksi stream audio menggunakan yt-dlp lokal dengan multi-client modern dan format selection fleksibel
  */
 export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
   const binary = findYtDlpBinary();
@@ -117,28 +117,102 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
   const cookiesPath = setupCookiesFile();
   const nodeRuntime = process.execPath || "node";
 
+  // Base arguments: TLS strictly validated (tanpa --no-check-certificates), EJS challenge solver aktif
   const baseArgs = [
     "--no-warnings",
     "--geo-bypass",
     "--force-ipv4",
-    "--no-check-certificates",
     "--js-runtimes",
     `node:${nodeRuntime}`,
     "--remote-components",
     "ejs:github",
-    "-g",
-    "-f",
-    "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
   ];
 
   if (cookiesPath) {
     baseArgs.push("--cookies", cookiesPath);
   }
 
-  // Percobaan 1: Menggunakan chain extractor modern bawaan yt-dlp
+  // Percobaan 1: Menggunakan chain client modern visionos, android, web_embedded dengan dump-single-json
+  let initialErrorType = "NONE";
   try {
-    const { stdout } = await execFileAsync(binary, [...baseArgs, videoTarget], {
-      timeout: 15000,
+    const { stdout } = await execFileAsync(
+      binary,
+      [
+        ...baseArgs,
+        "--extractor-args",
+        "youtube:player_client=visionos,android,web_embedded",
+        "--dump-single-json",
+        videoTarget,
+      ],
+      { timeout: 14000, maxBuffer: 15 * 1024 * 1024 }
+    );
+
+    const parsed = JSON.parse(stdout);
+    const formats: Array<{
+      url?: string;
+      acodec?: string;
+      vcodec?: string;
+      ext?: string;
+      abr?: number;
+      tbr?: number;
+    }> = parsed.formats || [];
+
+    const validAudios = formats.filter(
+      (f) =>
+        f.url &&
+        f.url.startsWith("http") &&
+        !f.url.includes("manifest/hls") &&
+        f.acodec &&
+        f.acodec !== "none"
+    );
+
+    if (validAudios.length > 0) {
+      validAudios.sort((a, b) => {
+        const aStandalone = !a.vcodec || a.vcodec === "none" ? 1 : 0;
+        const bStandalone = !b.vcodec || b.vcodec === "none" ? 1 : 0;
+        if (aStandalone !== bStandalone) return bStandalone - aStandalone;
+
+        const aAac = a.ext === "m4a" || (a.acodec && a.acodec.includes("mp4a")) ? 1 : 0;
+        const bAac = b.ext === "m4a" || (b.acodec && b.acodec.includes("mp4a")) ? 1 : 0;
+        if (aAac !== bAac) return bAac - aAac;
+
+        return (b.abr || b.tbr || 0) - (a.abr || a.tbr || 0);
+      });
+      return validAudios[0].url || null;
+    }
+  } catch (err: unknown) {
+    const detail = (err instanceof Error ? err.message : String(err)).trim();
+    if (/needs to be reloaded|UNPLAYABLE|tv_downgraded/i.test(detail)) {
+      initialErrorType = "PAGE_RELOAD";
+    }
+    console.warn("[Stream API] yt-dlp primary resolution failed:", detail.split("\n")[0]);
+  }
+
+  // Percobaan 2: Fallback terarah (android_vr / web_embedded jika PAGE_RELOAD, atau lenient format)
+  try {
+    const fallbackArgs = [...baseArgs];
+    if (initialErrorType === "PAGE_RELOAD") {
+      fallbackArgs.push(
+        "--extractor-args",
+        "youtube:player_client=android_vr,web_embedded",
+        "-f",
+        "ba[ext=m4a]/ba[ext=mp4]/ba/b[ext=mp4]/b/best",
+        "-g",
+        videoTarget
+      );
+    } else {
+      fallbackArgs.push(
+        "--extractor-args",
+        "youtube:player_client=android,ios,web_embedded",
+        "-f",
+        "ba[ext=m4a]/ba[ext=mp4]/ba/b[ext=mp4]/b/best",
+        "-g",
+        videoTarget
+      );
+    }
+
+    const { stdout } = await execFileAsync(binary, fallbackArgs, {
+      timeout: 12000,
       maxBuffer: 10 * 1024 * 1024,
     });
 
@@ -146,29 +220,9 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
     if (resolvedUrl && resolvedUrl.startsWith("http")) {
       return resolvedUrl;
     }
-  } catch (err) {
-    console.warn("[Stream API] yt-dlp default resolution failed:", err);
-  }
-
-  // Percobaan 2: Fallback dengan client mweb
-  try {
-    const { stdout } = await execFileAsync(
-      binary,
-      [
-        ...baseArgs,
-        "--extractor-args",
-        "youtube:player_client=mweb,android",
-        videoTarget,
-      ],
-      { timeout: 15000, maxBuffer: 10 * 1024 * 1024 }
-    );
-
-    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
-    if (resolvedUrl && resolvedUrl.startsWith("http")) {
-      return resolvedUrl;
-    }
-  } catch (err) {
-    console.warn("[Stream API] yt-dlp fallback resolution failed:", err);
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn("[Stream API] yt-dlp fallback resolution failed:", detail.split("\n")[0]);
   }
 
   return null;

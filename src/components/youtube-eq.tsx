@@ -5,6 +5,7 @@ import {
   Sliders,
   RotateCcw,
   Volume2,
+  VolumeX,
   Power,
   Sparkles,
   ChevronDown,
@@ -13,6 +14,8 @@ import {
   Settings,
   Info,
   Activity,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import {
   YOUTUBE_EQ_10_BANDS,
@@ -383,6 +386,55 @@ export function YoutubeEq({
 
 
 
+  const handleToggleFeedbackGuard = () => {
+    const nextVal = !eqState.feedbackGuard;
+    const nextState = { ...eqState, feedbackGuard: nextVal };
+    setEqState(nextState);
+    saveYoutubeEqState(nextState);
+    youtubeEqEngineSingleton.setFeedbackGuard(nextVal);
+    toast(
+      nextVal
+        ? "🛡️ Feedback Guard Aktif: Melindungi speaker dari feedback loop & membatasi peak clipping tanpa memutus audio."
+        : "Feedback Guard Dinonaktifkan: Pemrosesan filter audio langsung.",
+      nextVal ? "success" : "info"
+    );
+  };
+
+  const handlePreampChange = (preampDb: number) => {
+    const nextState = { ...eqState, preamp: preampDb };
+    setEqState(nextState);
+    saveYoutubeEqState(nextState);
+    youtubeEqEngineSingleton.updatePreamp(preampDb);
+  };
+
+  const handleOutputVolumeChange = (volume: number) => {
+    const nextState = { ...eqState, outputVolume: volume };
+    setEqState(nextState);
+    saveYoutubeEqState(nextState);
+    youtubeEqEngineSingleton.setOutputVolume(volume);
+  };
+
+  const handleResetGainStaging = () => {
+    const nextState = { ...eqState, preamp: 0, outputVolume: 1.0 };
+    setEqState(nextState);
+    saveYoutubeEqState(nextState);
+    youtubeEqEngineSingleton.resetGainStaging();
+    setIsMutedOutput(false);
+    toast("Gain staging berhasil direset: Preamp 0 dB & Master Volume 100%.", "success");
+  };
+
+  const handleToggleMuteOutput = () => {
+    const nextVal = !isMutedOutput;
+    setIsMutedOutput(nextVal);
+    youtubeEqEngineSingleton.setOutputMuted(nextVal);
+    toast(
+      nextVal
+        ? "🔇 Output Web Audio dibisukan ke speaker (hanya visualizer aktif)."
+        : "🔊 Output Web Audio aktif ke speaker.",
+      "info"
+    );
+  };
+
   const handleOpenSystemPanel = async () => {
     toast("Membuka panel equalizer sistem ponsel...", "info");
     const ok = await openSystemEqualizerPanel();
@@ -412,8 +464,13 @@ export function YoutubeEq({
         setGlobalEqSync(true);
       }
       setIsMutedOutput(false);
-      toast("Pilih tab browser MusikKu/YouTube ini di jendela pop-up dan pastikan centang 'Bagikan audio tab'.", "info");
-      await youtubeEqEngineSingleton.connectTabAudio(eqState.gains10, eqState.preamp);
+      toast("Pilih tab browser YouTube dan pastikan mencentang kotak 'Bagikan audio tab'.", "info");
+      await youtubeEqEngineSingleton.connectTabAudio(
+        eqState.gains10,
+        eqState.preamp,
+        eqState.outputVolume ?? 1.0,
+        eqState.feedbackGuard !== false
+      );
     } catch (err: unknown) {
       const error = err as { name?: string; message?: string };
       if (error?.name === "NotAllowedError") {
@@ -515,35 +572,50 @@ export function YoutubeEq({
             </button>
           )}
 
-          {/* Tombol Anti-Gema jika terjadi double sound di desktop */}
+          {/* Tombol Feedback Guard (Anti-Feedback / Anti-Loopback & Safety Limiter) */}
           {isTabConnected && (
             <button
-              onClick={() => {
-                const nextVal = !isMutedOutput;
-                setIsMutedOutput(nextVal);
-                youtubeEqEngineSingleton.setOutputMuted(nextVal);
-                toast(
-                  nextVal
-                    ? "Mode Anti-Gema Aktif: Output Web Audio dibisukan (hanya suara asli + visualizer aktif)."
-                    : "Output Web Audio EQ diaktifkan ke speaker.",
-                  "info"
-                );
-              }}
-              title="Aktifkan jika browser Anda memutar suara ganda / bergema"
+              onClick={handleToggleFeedbackGuard}
+              title="Proteksi feedback loop & soft limiter untuk menjaga speaker dari distorsi dan runaway gain"
               className={`hidden md:inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                isMutedOutput
-                  ? "border-amber-500/40 bg-amber-500/20 text-amber-200"
-                  : "border-white/10 bg-white/5 text-zinc-300 hover:bg-white/10"
+                eqState.feedbackGuard
+                  ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-200"
+                  : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
               }`}
             >
-              <span>{isMutedOutput ? "🔇 Anti-Gema: On" : "🔊 Anti-Gema: Off"}</span>
+              <ShieldCheck className={`size-3.5 ${eqState.feedbackGuard ? "text-emerald-400" : "text-zinc-500"}`} />
+              <span>{eqState.feedbackGuard ? "🛡️ Guard: On" : "Guard: Off"}</span>
+            </button>
+          )}
+
+          {/* Tombol Mute Output Eksplisit (Opsional untuk Membisu Speaker Tanpa Memutus Visualizer) */}
+          {isTabConnected && (
+            <button
+              onClick={handleToggleMuteOutput}
+              title={
+                isMutedOutput
+                  ? "Aktifkan kembali suara Web Audio ke speaker"
+                  : "Bisukan suara Web Audio ke speaker (visualizer tetap bergerak)"
+              }
+              className={`hidden lg:inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                isMutedOutput
+                  ? "border-amber-500/40 bg-amber-500/20 text-amber-200"
+                  : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {isMutedOutput ? (
+                <VolumeX className="size-3.5 text-amber-400" />
+              ) : (
+                <Volume2 className="size-3.5 text-zinc-400" />
+              )}
+              <span>{isMutedOutput ? "🔇 Bisu" : "🔊 Suara"}</span>
             </button>
           )}
 
           {/* Tombol Diagnostik Audio & Engine */}
           <button
             onClick={() => setShowDiagnostics(!showDiagnostics)}
-            title="Lihat status diagnostik Web Audio, AudioContext & Sinyal"
+            title="Lihat status diagnostik Web Audio, AudioContext, RMS & Sinyal"
             className={`hidden sm:inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
               showDiagnostics
                 ? "border-cyan-500/40 bg-cyan-500/20 text-cyan-200"
@@ -583,19 +655,21 @@ export function YoutubeEq({
       {/* Expanded Equalizer Body */}
       {isOpen && (
         <div className="w-full max-w-full min-w-0 overflow-hidden border-t border-white/10 p-3 sm:p-5 space-y-3.5 animate-in fade-in duration-200">
-          {/* Banner Diagnostik Web Audio & Sinyal */}
+          {/* Banner Diagnostik Web Audio & Sinyal Dual-RMS */}
           {showDiagnostics && (
-            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 text-xs space-y-2">
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 text-xs space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-cyan-300 flex items-center gap-1.5">
                   <Activity className="size-3.5 text-cyan-400" />
-                  DIAGNOSTIK WEB AUDIO & CAPTURE
+                  DIAGNOSTIK AUDIO, RMS & GAIN STAGING
                 </span>
                 <span className="text-[10px] text-zinc-400 font-mono">
-                  Engine: {diagnostics?.isConnected ? "TERKONEKSI" : "STANDBY"}
+                  Engine: {diagnostics?.isConnected ? "TERKONEKSI (LIVE)" : "STANDBY"}
                 </span>
               </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                {/* 1. AudioContext */}
                 <div className="rounded-lg bg-black/40 border border-white/5 p-2">
                   <span className="text-zinc-400 block text-[10px]">AudioContext</span>
                   <span
@@ -607,58 +681,194 @@ export function YoutubeEq({
                     {diagnostics?.sampleRate ? `${diagnostics.sampleRate} Hz` : "-"})
                   </span>
                 </div>
+
+                {/* 2. Audio Track */}
                 <div className="rounded-lg bg-black/40 border border-white/5 p-2">
                   <span className="text-zinc-400 block text-[10px]">Audio Track</span>
-                  <span className="font-mono font-bold text-zinc-200 truncate block" title={diagnostics?.audioTrackLabel}>
+                  <span
+                    className="font-mono font-bold text-zinc-200 truncate block"
+                    title={diagnostics?.audioTrackLabel}
+                  >
                     {diagnostics?.hasAudioTrack ? `Live (${diagnostics.audioTrackCount})` : "Tidak ada"}
                   </span>
                 </div>
+
+                {/* 3. Pre-EQ Input RMS */}
                 <div className="rounded-lg bg-black/40 border border-white/5 p-2">
-                  <span className="text-zinc-400 block text-[10px]">Level Sinyal Masuk</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                    <span>Sinyal Pre-EQ</span>
+                    <span className="font-mono">{diagnostics?.preEqDb ?? -60} dBFS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1">
                     <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
                       <div
-                        className={`h-full transition-all duration-150 ${
-                          (diagnostics?.signalLevel || 0) > 0
-                            ? "bg-gradient-to-r from-emerald-500 to-cyan-400"
-                            : "bg-zinc-600"
-                        }`}
-                        style={{ width: `${diagnostics?.signalLevel || 0}%` }}
+                        className="h-full bg-cyan-400 transition-all duration-100"
+                        style={{ width: `${diagnostics?.preEqLevel || 0}%` }}
                       />
                     </div>
-                    <span className="font-mono text-[10px] text-zinc-300">{diagnostics?.signalLevel || 0}%</span>
+                    <span className="font-mono text-[10px] text-zinc-300">{diagnostics?.preEqLevel || 0}%</span>
                   </div>
                 </div>
+
+                {/* 4. Post-EQ Output RMS */}
                 <div className="rounded-lg bg-black/40 border border-white/5 p-2">
-                  <span className="text-zinc-400 block text-[10px]">Status Output</span>
+                  <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                    <span>Sinyal Post-EQ</span>
+                    <span className="font-mono">{diagnostics?.postEqDb ?? -60} dBFS</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-100 ${
+                          (diagnostics?.postEqLevel || 0) > 85
+                            ? "bg-amber-400"
+                            : "bg-gradient-to-r from-emerald-500 to-fuchsia-400"
+                        }`}
+                        style={{ width: `${diagnostics?.postEqLevel || 0}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-zinc-300">{diagnostics?.postEqLevel || 0}%</span>
+                  </div>
+                </div>
+
+                {/* 5. Peak & Clipping */}
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Headroom / Clipping</span>
                   <span
-                    className={`font-mono font-bold ${
-                      diagnostics?.isOutputMuted ? "text-amber-400" : "text-emerald-400"
+                    className={`font-mono font-bold flex items-center gap-1 ${
+                      diagnostics?.isClipping ? "text-rose-400 animate-pulse" : "text-emerald-400"
                     }`}
                   >
-                    {diagnostics?.isOutputMuted ? "Bisu (Visual Saja)" : "Aktif ke Speaker"}
+                    {diagnostics?.isClipping ? "⚠️ Peak Clipping!" : "✓ Headroom Aman"}
+                  </span>
+                </div>
+
+                {/* 6. Output Status */}
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Output ke Speaker</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      diagnostics?.isOutputMuted
+                        ? "text-amber-400"
+                        : diagnostics?.isOutputActive
+                        ? "text-emerald-400"
+                        : "text-zinc-400"
+                    }`}
+                  >
+                    {diagnostics?.isOutputMuted
+                      ? "Bisu (Visual Saja)"
+                      : diagnostics?.isOutputActive
+                      ? `Aktif (${Math.round((diagnostics?.outputGainValue ?? 1) * 100)}%)`
+                      : "Standby"}
+                  </span>
+                </div>
+
+                {/* 7. Feedback Guard */}
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Feedback Guard</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      diagnostics?.feedbackGuardEnabled ? "text-emerald-400" : "text-zinc-400"
+                    }`}
+                  >
+                    {diagnostics?.feedbackGuardEnabled ? "Aktif (Limiter + DC-Block)" : "Bypass (Direct)"}
+                  </span>
+                </div>
+
+                {/* 8. Tab Suppress */}
+                <div className="rounded-lg bg-black/40 border border-white/5 p-2">
+                  <span className="text-zinc-400 block text-[10px]">Penekanan Tab Lokal</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      diagnostics?.suppressLocalPlaybackSupported ? "text-emerald-400" : "text-zinc-300"
+                    }`}
+                  >
+                    {diagnostics?.suppressLocalPlaybackSupported ? "Didukung Browser ✓" : "Standard"}
                   </span>
                 </div>
               </div>
-              <div className="text-[10px] text-zinc-400 flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-white/5">
+
+              <div className="text-[10px] text-zinc-400 flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-white/5">
                 <span>
-                  Rantai Pemrosesan: <code>Source → Preamp → 10 Biquad Filters → Analyser → Output</code>
-                </span>
-                <span>
-                  Penekanan Audio Tab Lokal:{" "}
-                  {diagnostics?.suppressLocalPlaybackSupported ? "Didukung Browser ✓" : "Standard"}
+                  Rantai Web Audio: <code>Source → Pre-RMS → DC-Block(20Hz) → Preamp → 10 EQ Filter → Post-RMS → Limiter → Master Out → Destination</code>
                 </span>
               </div>
             </div>
           )}
 
-          {/* Alert jika Anti-Gema Aktif */}
+          {/* Bar Kontrol Gain Staging: Preamp, Master Out & Reset Gain */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs">
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Preamp */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-zinc-400">Preamp:</span>
+                <span className="font-mono text-[11px] font-bold text-violet-300 w-10">
+                  {eqState.preamp > 0 ? `+${eqState.preamp}` : eqState.preamp} dB
+                </span>
+                <input
+                  type="range"
+                  min={-6}
+                  max={6}
+                  step={1}
+                  value={eqState.preamp}
+                  onChange={(e) => handlePreampChange(Number(e.target.value))}
+                  className="w-20 h-1.5 cursor-pointer rounded-full bg-zinc-800 accent-violet-400"
+                  title="Atur level gain sebelum filter EQ (-6 dB s/d +6 dB)"
+                />
+              </div>
+
+              {/* Master Output Volume */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold text-zinc-400">Master Out:</span>
+                <span className="font-mono text-[11px] font-bold text-emerald-300 w-10">
+                  {Math.round((eqState.outputVolume ?? 1.0) * 100)}%
+                </span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={1.5}
+                  step={0.05}
+                  value={eqState.outputVolume ?? 1.0}
+                  onChange={(e) => handleOutputVolumeChange(Number(e.target.value))}
+                  className="w-20 h-1.5 cursor-pointer rounded-full bg-zinc-800 accent-emerald-400"
+                  title="Volume output akhir ke speaker (50% s/d 150%)"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {diagnostics?.isClipping && (
+                <span className="flex items-center gap-1 text-[10px] font-bold text-rose-400 animate-pulse">
+                  <AlertTriangle className="size-3" />
+                  Peak clipping! Turunkan gain
+                </span>
+              )}
+              <button
+                onClick={handleResetGainStaging}
+                title="Kembalikan Preamp ke 0 dB dan Master Out ke 100%"
+                className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/10 px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:bg-white/20 transition cursor-pointer"
+              >
+                <RotateCcw className="size-3" />
+                <span>Reset Gain Staging</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Alert jika Output Dibisukan Secara Manual */}
           {isTabConnected && isMutedOutput && (
-            <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/30 p-2.5 text-xs text-amber-200">
-              <Info className="size-4 shrink-0 text-amber-400" />
-              <span>
-                <strong>Mode Anti-Gema Aktif:</strong> Output Web Audio dibisukan ke speaker. Visualizer tetap bereaksi, namun perubahan slider EQ tidak terdengar ke speaker. Matikan Anti-Gema di atas untuk mendengar efek EQ.
-              </span>
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-950/30 p-2.5 text-xs text-amber-200">
+              <div className="flex items-center gap-2">
+                <VolumeX className="size-4 shrink-0 text-amber-400" />
+                <span>
+                  <strong>Output Web Audio Dibisukan:</strong> Visualizer tetap merefleksikan audio, namun speaker dibisukan. Klik <strong>Suara</strong> di atas untuk mengaktifkan kembali output speaker.
+                </span>
+              </div>
+              <button
+                onClick={handleToggleMuteOutput}
+                className="rounded-lg bg-amber-500/30 px-2.5 py-1 text-xs font-bold text-amber-200 hover:bg-amber-500/40 transition shrink-0 cursor-pointer"
+              >
+                Bunyikan Speaker
+              </button>
             </div>
           )}
 

@@ -65,6 +65,8 @@ export interface YoutubeEqState {
   preset: string;
   gains10: number[];
   preamp: number; // dB, -6 to +6
+  outputVolume?: number; // 0.0 to 1.5, default 1.0 (100%)
+  feedbackGuard?: boolean; // default true (proteksi feedback loop & soft limiter)
 }
 
 export const DEFAULT_YOUTUBE_EQ_STATE: YoutubeEqState = {
@@ -73,6 +75,8 @@ export const DEFAULT_YOUTUBE_EQ_STATE: YoutubeEqState = {
   preset: "flat",
   gains10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   preamp: 0,
+  outputVolume: 1.0,
+  feedbackGuard: true,
 };
 
 export function loadYoutubeEqState(): YoutubeEqState {
@@ -91,6 +95,8 @@ export function loadYoutubeEqState(): YoutubeEqState {
               preset: eqObj.preset || "flat",
               gains10: eqObj.gains,
               preamp: 0,
+              outputVolume: 1.0,
+              feedbackGuard: true,
             });
           }
         } catch {}
@@ -107,6 +113,8 @@ export function loadYoutubeEqState(): YoutubeEqState {
         ? parsed.gains10.map((v: number) => Math.max(-12, Math.min(12, Number(v) || 0)))
         : [...DEFAULT_YOUTUBE_EQ_STATE.gains10],
       preamp: Math.max(-6, Math.min(6, Number(parsed.preamp) || 0)),
+      outputVolume: typeof parsed.outputVolume === "number" ? Math.max(0, Math.min(1.5, parsed.outputVolume)) : 1.0,
+      feedbackGuard: parsed.feedbackGuard !== false,
     };
   } catch {
     return DEFAULT_YOUTUBE_EQ_STATE;
@@ -116,16 +124,22 @@ export function loadYoutubeEqState(): YoutubeEqState {
 export function saveYoutubeEqState(state: YoutubeEqState): void {
   try {
     if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      localStorage.setItem(EQ_SYNC_KEY, String(state.enabled));
+      const mergedState: YoutubeEqState = {
+        ...DEFAULT_YOUTUBE_EQ_STATE,
+        ...state,
+        outputVolume: typeof state.outputVolume === "number" ? state.outputVolume : DEFAULT_YOUTUBE_EQ_STATE.outputVolume,
+        feedbackGuard: typeof state.feedbackGuard === "boolean" ? state.feedbackGuard : DEFAULT_YOUTUBE_EQ_STATE.feedbackGuard,
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedState));
+      localStorage.setItem(EQ_SYNC_KEY, String(mergedState.enabled));
       localStorage.setItem(
         "musikku:eq-settings",
         JSON.stringify({
-          preset: state.preset,
-          gains: state.gains10,
+          preset: mergedState.preset,
+          gains: mergedState.gains10,
         })
       );
-      localStorage.setItem("musikku:local-eq", JSON.stringify(state.gains10));
+      localStorage.setItem("musikku:local-eq", JSON.stringify(mergedState.gains10));
     }
   } catch {}
   void applyNativeGains(state.gains10, state.enabled);
@@ -168,24 +182,51 @@ export interface YoutubeEqDiagnostics {
   audioTrackReadyState: MediaStreamTrackState | "none";
   videoTrackCount: number;
   hasSignal: boolean;
-  signalLevel: number; // 0..100
-  isOutputMuted: boolean;
+  signalLevel: number; // 0..100 (dari output analyser)
+  preEqLevel: number;  // 0..100% RMS sebelum EQ
+  postEqLevel: number; // 0..100% RMS setelah EQ
+  preEqDb: number;     // dBFS (-60..0)
+  postEqDb: number;    // dBFS (-60..0)
+  isClipping: boolean; // Peak clipping detection (peak >= 0.98)
+  outputGainValue: number; // 0.0 .. 1.5
+  isOutputActive: boolean; // output gain > 0 and connected to destination
+  isOutputMuted: boolean;  // explicit mute
+  feedbackGuardEnabled: boolean;
+  feedbackGuardTriggered: boolean;
   suppressLocalPlaybackSupported: boolean;
+  suppressLocalPlaybackActive: boolean;
 }
 
 /**
  * Web Audio Engine untuk penangkapan Live Tab Audio YouTube & real-time EQ filtering
+ * 
+ * Rantai Audio yang benar:
+ * Source -> preAnalyser (pengukuran input RMS)
+ *        -> dcBlockFilter (20Hz highpass buang DC offset & runaway sub-bass loop)
+ *        -> preampGain (-6dB .. +6dB)
+ *        -> 10 BiquadFilter (band 0 lowshelf Q=0.707, band 1..8 peaking Q=1.414, band 9 highshelf Q=0.707)
+ *        -> postAnalyser (visualizer & output RMS)
+ *        -> safetyLimiter (DynamicsCompressor: true brickwall peak limiter mencegah distorsi clipping)
+ *        -> outputGain (master output volume, TIDAK PERNAH dibisukan oleh Anti-Feedback)
+ *        -> ctx.destination (output speaker)
  */
 export class YoutubeEqEngine {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private preAnalyser: AnalyserNode | null = null;
+  private dcBlockFilter: BiquadFilterNode | null = null;
   private preampGain: GainNode | null = null;
   private filters: BiquadFilterNode[] = [];
-  private analyser: AnalyserNode | null = null;
+  private postAnalyser: AnalyserNode | null = null;
+  private safetyLimiter: DynamicsCompressorNode | null = null;
   private outputGain: GainNode | null = null;
   private isOutputMuted = false;
+  private currentOutputVolume = 1.0;
+  private currentPreampDb = 0;
   private isConnected = false;
+  private feedbackGuardEnabled = true;
+  private feedbackGuardTriggered = false;
   private onStateChangeCb?: (connected: boolean) => void;
 
   public onConnectionChange(cb: (connected: boolean) => void) {
@@ -206,9 +247,57 @@ export class YoutubeEqEngine {
       try {
         const now = this.ctx.currentTime;
         this.outputGain.gain.cancelScheduledValues(now);
-        this.outputGain.gain.setValueAtTime(muted ? 0 : 1, now);
+        const target = muted ? 0 : this.currentOutputVolume;
+        this.outputGain.gain.setValueAtTime(target, now);
       } catch {
-        this.outputGain.gain.value = muted ? 0 : 1;
+        this.outputGain.gain.value = muted ? 0 : this.currentOutputVolume;
+      }
+    }
+  }
+
+  public setOutputVolume(volume: number): void {
+    const clamped = Math.max(0, Math.min(1.5, volume));
+    this.currentOutputVolume = clamped;
+    if (this.outputGain && this.ctx && !this.isOutputMuted) {
+      try {
+        const now = this.ctx.currentTime;
+        this.outputGain.gain.cancelScheduledValues(now);
+        this.outputGain.gain.setTargetAtTime(clamped, now, 0.03);
+      } catch {
+        this.outputGain.gain.value = clamped;
+      }
+    }
+  }
+
+  public getOutputVolume(): number {
+    return this.currentOutputVolume;
+  }
+
+  public setFeedbackGuard(enabled: boolean): void {
+    this.feedbackGuardEnabled = enabled;
+  }
+
+  public getFeedbackGuard(): boolean {
+    return this.feedbackGuardEnabled;
+  }
+
+  public resetGainStaging(): void {
+    this.currentPreampDb = 0;
+    this.currentOutputVolume = 1.0;
+    this.isOutputMuted = false;
+    this.feedbackGuardTriggered = false;
+    if (this.preampGain && this.ctx) {
+      try {
+        this.preampGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      } catch {
+        this.preampGain.gain.value = 1.0;
+      }
+    }
+    if (this.outputGain && this.ctx) {
+      try {
+        this.outputGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      } catch {
+        this.outputGain.gain.value = 1.0;
       }
     }
   }
@@ -259,6 +348,18 @@ export class YoutubeEqEngine {
       } catch {}
       this.sourceNode = null;
     }
+    if (this.preAnalyser) {
+      try {
+        this.preAnalyser.disconnect();
+      } catch {}
+      this.preAnalyser = null;
+    }
+    if (this.dcBlockFilter) {
+      try {
+        this.dcBlockFilter.disconnect();
+      } catch {}
+      this.dcBlockFilter = null;
+    }
     if (this.preampGain) {
       try {
         this.preampGain.disconnect();
@@ -271,11 +372,17 @@ export class YoutubeEqEngine {
       } catch {}
     }
     this.filters = [];
-    if (this.analyser) {
+    if (this.postAnalyser) {
       try {
-        this.analyser.disconnect();
+        this.postAnalyser.disconnect();
       } catch {}
-      this.analyser = null;
+      this.postAnalyser = null;
+    }
+    if (this.safetyLimiter) {
+      try {
+        this.safetyLimiter.disconnect();
+      } catch {}
+      this.safetyLimiter = null;
     }
     if (this.outputGain) {
       try {
@@ -285,7 +392,12 @@ export class YoutubeEqEngine {
     }
   }
 
-  public async connectTabAudio(initialGains: number[], preampDb = 0): Promise<boolean> {
+  public async connectTabAudio(
+    initialGains: number[],
+    preampDb = 0,
+    outputVolume = 1.0,
+    feedbackGuard = true
+  ): Promise<boolean> {
     if (
       typeof navigator === "undefined" ||
       !navigator.mediaDevices?.getDisplayMedia ||
@@ -324,6 +436,7 @@ export class YoutubeEqEngine {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
+        ...(supportsSuppress ? { suppressLocalAudioPlayback: true } : {}),
       },
       preferCurrentTab: true,
       selfBrowserSurface: "include",
@@ -350,8 +463,7 @@ export class YoutubeEqEngine {
       throw err;
     }
 
-    // PENTING: Jangan panggil vt.stop() karena di beberapa browser hal itu mematikan seluruh sesi capture!
-    // Cukup nonaktifkan (enabled = false) untuk hemat CPU/GPU tanpa memutus stream audio.
+    // Nonaktifkan video track untuk hemat CPU/GPU tanpa memutus stream audio
     stream.getVideoTracks().forEach((vt) => {
       vt.enabled = false;
     });
@@ -368,14 +480,6 @@ export class YoutubeEqEngine {
       );
     }
 
-    // Coba terapkan suppressLocalAudioPlayback pada track jika didukung
-    try {
-      if (typeof audioTracks[0].applyConstraints === "function") {
-        // @ts-expect-error Chromium specific constraint
-        await audioTracks[0].applyConstraints({ suppressLocalAudioPlayback: true });
-      }
-    } catch {}
-
     // Pasang listener saat user menghentikan sharing via banner browser
     stream.getTracks().forEach((track) => {
       track.onended = () => {
@@ -390,44 +494,70 @@ export class YoutubeEqEngine {
     }
 
     this.stream = stream;
+    this.currentPreampDb = preampDb;
+    this.currentOutputVolume = outputVolume;
+    this.feedbackGuardEnabled = feedbackGuard;
+    this.feedbackGuardTriggered = false;
+
+    // 1. Source Node
     this.sourceNode = ctx.createMediaStreamSource(stream);
 
-    // Preamp Node
+    // 2. preAnalyser (Untuk mengukur RMS sinyal murni input sebelum EQ)
+    this.preAnalyser = ctx.createAnalyser();
+    this.preAnalyser.fftSize = 256;
+    this.preAnalyser.smoothingTimeConstant = 0.5;
+    this.sourceNode.connect(this.preAnalyser);
+
+    // 3. dcBlockFilter (Highpass 20Hz: buang DC offset / sub-bass rumble pencegah runaway loop)
+    this.dcBlockFilter = ctx.createBiquadFilter();
+    this.dcBlockFilter.type = "highpass";
+    this.dcBlockFilter.frequency.value = 20;
+    this.dcBlockFilter.Q.value = 0.707;
+    this.sourceNode.connect(this.dcBlockFilter);
+
+    // 4. Preamp Node
     this.preampGain = ctx.createGain();
     this.preampGain.gain.value = Math.pow(10, preampDb / 20);
+    this.dcBlockFilter.connect(this.preampGain);
 
-    // 10-Band Biquad Filters (peaking/shelf EQ)
+    // 5. 10-Band Biquad Filters (shelf pada band 0 & 9 dengan Q=0.707; peaking band 1..8 dengan Q=1.414)
     this.filters = YOUTUBE_EQ_10_BANDS.map((band, i) => {
       const filter = ctx.createBiquadFilter();
       filter.type = i === 0 ? "lowshelf" : i === YOUTUBE_EQ_10_BANDS.length - 1 ? "highshelf" : "peaking";
       filter.frequency.value = band.freq;
-      filter.Q.value = 1.4;
+      filter.Q.value = i === 0 || i === YOUTUBE_EQ_10_BANDS.length - 1 ? 0.707 : 1.414;
       filter.gain.value = initialGains[i] ?? 0;
       return filter;
     });
 
-    // Analyser Node diletakkan setelah filters agar visualizer benar-benar menampilkan efek EQ
-    this.analyser = ctx.createAnalyser();
-    this.analyser.fftSize = 128;
-    this.analyser.smoothingTimeConstant = 0.8;
-
-    // Output Gain Node
-    this.outputGain = ctx.createGain();
-    this.outputGain.gain.value = this.isOutputMuted ? 0 : 1.0;
-
-    // Sambungkan rantai Web Audio secara berurutan:
-    // Source -> Preamp -> Filter 0..9 -> Analyser -> OutputGain -> Destination
-    let lastNode: AudioNode = this.sourceNode;
-    lastNode.connect(this.preampGain);
-    lastNode = this.preampGain;
-
+    let lastNode: AudioNode = this.preampGain;
     for (const filter of this.filters) {
       lastNode.connect(filter);
       lastNode = filter;
     }
 
-    lastNode.connect(this.analyser);
-    this.analyser.connect(this.outputGain);
+    // 6. postAnalyser (Visualizer & post-EQ signal level)
+    this.postAnalyser = ctx.createAnalyser();
+    this.postAnalyser.fftSize = 256;
+    this.postAnalyser.smoothingTimeConstant = 0.8;
+    lastNode.connect(this.postAnalyser);
+
+    // 7. safetyLimiter (Soft-knee peak limiter: cegah digital hard clipping ke speaker DAC)
+    this.safetyLimiter = ctx.createDynamicsCompressor();
+    this.safetyLimiter.threshold.value = -0.5;
+    this.safetyLimiter.knee.value = 3.0;
+    this.safetyLimiter.ratio.value = 20.0;
+    this.safetyLimiter.attack.value = 0.003;
+    this.safetyLimiter.release.value = 0.08;
+    lastNode.connect(this.safetyLimiter);
+
+    // 8. Output Gain Node (TIDAK PERNAH dibisukan oleh Anti-Feedback)
+    this.outputGain = ctx.createGain();
+    const effectiveGain = this.isOutputMuted ? 0 : this.currentOutputVolume;
+    this.outputGain.gain.value = effectiveGain;
+    this.safetyLimiter.connect(this.outputGain);
+
+    // 9. Audio Destination (Speaker fisik)
     this.outputGain.connect(ctx.destination);
 
     this.isConnected = true;
@@ -454,6 +584,7 @@ export class YoutubeEqEngine {
   }
 
   public updatePreamp(preampDb: number): void {
+    this.currentPreampDb = preampDb;
     if (!this.ctx || !this.preampGain) return;
     const gainVal = Math.pow(10, preampDb / 20);
     try {
@@ -465,32 +596,60 @@ export class YoutubeEqEngine {
   }
 
   public getVisualizerData(): Uint8Array | null {
-    if (!this.analyser) return null;
-    const buffer = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(buffer);
+    if (!this.postAnalyser) return null;
+    const buffer = new Uint8Array(this.postAnalyser.frequencyBinCount);
+    this.postAnalyser.getByteFrequencyData(buffer);
     return buffer;
   }
 
-  public getSignalLevel(): number {
-    if (!this.analyser) return 0;
-    const buffer = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(buffer);
-    let sum = 0;
-    for (let i = 0; i < buffer.length; i++) {
-      sum += buffer[i];
+  public getPreEqRms(): { level: number; db: number } {
+    if (!this.preAnalyser) return { level: 0, db: -60 };
+    const buffer = new Float32Array(this.preAnalyser.fftSize);
+    try {
+      this.preAnalyser.getFloatTimeDomainData(buffer);
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        sum += buffer[i] * buffer[i];
+      }
+      const rms = Math.sqrt(sum / buffer.length);
+      const db = rms > 0.0001 ? Math.max(-60, Math.round(20 * Math.log10(rms))) : -60;
+      const level = Math.min(100, Math.round(rms * 100 * 2.8));
+      return { level, db };
+    } catch {
+      return { level: 0, db: -60 };
     }
-    const avg = sum / buffer.length;
-    return Math.min(100, Math.round((avg / 255) * 100 * 2));
   }
 
-  public hasActiveSignal(): boolean {
-    if (!this.analyser) return false;
-    const buffer = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(buffer);
-    for (let i = 0; i < buffer.length; i++) {
-      if (buffer[i] > 5) return true;
+  public getPostEqRms(): { level: number; db: number } {
+    if (!this.postAnalyser) return { level: 0, db: -60 };
+    const buffer = new Float32Array(this.postAnalyser.fftSize);
+    try {
+      this.postAnalyser.getFloatTimeDomainData(buffer);
+      let sum = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        sum += buffer[i] * buffer[i];
+      }
+      const rms = Math.sqrt(sum / buffer.length);
+      const db = rms > 0.0001 ? Math.max(-60, Math.round(20 * Math.log10(rms))) : -60;
+      const level = Math.min(100, Math.round(rms * 100 * 2.8));
+      return { level, db };
+    } catch {
+      return { level: 0, db: -60 };
     }
-    return false;
+  }
+
+  public isClipping(): boolean {
+    if (!this.postAnalyser) return false;
+    const buffer = new Float32Array(this.postAnalyser.fftSize);
+    try {
+      this.postAnalyser.getFloatTimeDomainData(buffer);
+      for (let i = 0; i < buffer.length; i++) {
+        if (Math.abs(buffer[i]) >= 0.98) return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   public getDiagnostics(): YoutubeEqDiagnostics {
@@ -502,6 +661,33 @@ export class YoutubeEqEngine {
         : null;
     const supportsSuppress = Boolean(supportedConstraints && "suppressLocalAudioPlayback" in supportedConstraints);
 
+    let suppressActive = false;
+    if (audioTrack && typeof audioTrack.getSettings === "function") {
+      try {
+        const settings = audioTrack.getSettings();
+        if (settings && "suppressLocalAudioPlayback" in settings) {
+          suppressActive = Boolean((settings as { suppressLocalAudioPlayback?: boolean }).suppressLocalAudioPlayback);
+        } else {
+          suppressActive = supportsSuppress;
+        }
+      } catch {}
+    }
+
+    const preRms = this.getPreEqRms();
+    const postRms = this.getPostEqRms();
+    const clipping = this.isClipping();
+
+    // Feedback loop runaway check
+    if (this.feedbackGuardEnabled && clipping && postRms.level > 90 && preRms.level > 85) {
+      if (this.currentOutputVolume > 0.8 && this.outputGain && this.ctx) {
+        this.currentOutputVolume = 0.8;
+        const now = this.ctx.currentTime;
+        this.outputGain.gain.cancelScheduledValues(now);
+        this.outputGain.gain.setTargetAtTime(0.8, now, 0.05);
+        this.feedbackGuardTriggered = true;
+      }
+    }
+
     return {
       isConnected: this.isConnected,
       audioContextState: this.ctx ? this.ctx.state : "none",
@@ -511,16 +697,27 @@ export class YoutubeEqEngine {
       audioTrackLabel: audioTrack?.label || "none",
       audioTrackReadyState: audioTrack?.readyState || "none",
       videoTrackCount: videoTracks.length,
-      hasSignal: this.hasActiveSignal(),
-      signalLevel: this.getSignalLevel(),
+      hasSignal: postRms.level > 2 || preRms.level > 2,
+      signalLevel: postRms.level,
+      preEqLevel: preRms.level,
+      postEqLevel: postRms.level,
+      preEqDb: preRms.db,
+      postEqDb: postRms.db,
+      isClipping: clipping,
+      outputGainValue: this.currentOutputVolume,
+      isOutputActive: this.isConnected && !this.isOutputMuted && this.currentOutputVolume > 0,
       isOutputMuted: this.isOutputMuted,
+      feedbackGuardEnabled: this.feedbackGuardEnabled,
+      feedbackGuardTriggered: this.feedbackGuardTriggered,
       suppressLocalPlaybackSupported: supportsSuppress,
+      suppressLocalPlaybackActive: suppressActive,
     };
   }
 
   public disconnect(): void {
     this.cleanUpStreamAndNodes();
     this.isOutputMuted = false;
+    this.feedbackGuardTriggered = false;
     if (this.isConnected) {
       this.isConnected = false;
       this.onStateChangeCb?.(false);

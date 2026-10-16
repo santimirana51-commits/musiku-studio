@@ -8,6 +8,7 @@ import {
   saveYoutubeEqState,
   DEFAULT_YOUTUBE_EQ_STATE,
   type YoutubeEqState,
+  youtubeEqEngineSingleton,
 } from "./youtube-eq";
 
 describe("YouTube EQ Module", () => {
@@ -51,6 +52,51 @@ describe("YouTube EQ Module", () => {
     expect(loaded.preset).toBe("bass_boost");
     expect(loaded.gains10[0]).toBe(7);
     expect(loaded.preamp).toBe(2);
+  });
+
+  it("persists and restores state with outputVolume and feedbackGuard", () => {
+    const customState: YoutubeEqState = {
+      enabled: true,
+      bandCount: 10,
+      preset: "bass_boost",
+      gains10: [7, 6, 5, 3, 1, 0, 0, 0, 0, 0],
+      preamp: 2,
+      outputVolume: 1.2,
+      feedbackGuard: true,
+    };
+    saveYoutubeEqState(customState);
+    const loaded = loadYoutubeEqState();
+    expect(loaded.preset).toBe("bass_boost");
+    expect(loaded.gains10[0]).toBe(7);
+    expect(loaded.preamp).toBe(2);
+    expect(loaded.outputVolume).toBe(1.2);
+    expect(loaded.feedbackGuard).toBe(true);
+  });
+
+  it("handles output volume and feedback guard in engine", () => {
+    youtubeEqEngineSingleton.setOutputVolume(1.25);
+    expect(youtubeEqEngineSingleton.getOutputVolume()).toBe(1.25);
+
+    youtubeEqEngineSingleton.setFeedbackGuard(false);
+    expect(youtubeEqEngineSingleton.getFeedbackGuard()).toBe(false);
+    youtubeEqEngineSingleton.setFeedbackGuard(true);
+    expect(youtubeEqEngineSingleton.getFeedbackGuard()).toBe(true);
+
+    youtubeEqEngineSingleton.setOutputMuted(true);
+    expect(youtubeEqEngineSingleton.getIsOutputMuted()).toBe(true);
+    youtubeEqEngineSingleton.setOutputMuted(false);
+    expect(youtubeEqEngineSingleton.getIsOutputMuted()).toBe(false);
+
+    youtubeEqEngineSingleton.resetGainStaging();
+    expect(youtubeEqEngineSingleton.getOutputVolume()).toBe(1.0);
+    expect(youtubeEqEngineSingleton.getIsOutputMuted()).toBe(false);
+
+    const diag = youtubeEqEngineSingleton.getDiagnostics();
+    expect(diag).toHaveProperty("isConnected");
+    expect(diag).toHaveProperty("preEqLevel");
+    expect(diag).toHaveProperty("postEqLevel");
+    expect(diag).toHaveProperty("isClipping");
+    expect(diag).toHaveProperty("feedbackGuardEnabled");
   });
 
   it("falls back to defaults on corrupted localStorage", () => {

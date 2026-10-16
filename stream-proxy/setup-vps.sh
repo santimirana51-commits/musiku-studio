@@ -10,10 +10,13 @@ echo "=== [1/6] Memperbarui paket sistem ==="
 apt-get update -y
 apt-get install -y curl wget git ffmpeg python3 python3-pip ca-certificates
 
-echo "=== [2/6] Memasang yt-dlp versi terbaru ==="
-wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
-chmod a+rx /usr/local/bin/yt-dlp
-echo "yt-dlp terpasang: $(yt-dlp --version)"
+echo "=== [2/6] Memasang yt-dlp dan yt-dlp-ejs versi terbaru ==="
+pip3 install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs || {
+    wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
+    chmod a+rx /usr/local/bin/yt-dlp
+    pip3 install --no-cache-dir -U yt-dlp-ejs || true
+}
+echo "yt-dlp terpasang: $(yt-dlp --version 2>/dev/null || /usr/local/bin/yt-dlp --version)"
 
 echo "=== [3/6] Memasang Node.js 20 LTS jika belum ada ==="
 if ! command -v node &> /dev/null; then
