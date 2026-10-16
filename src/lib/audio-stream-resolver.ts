@@ -69,6 +69,9 @@ export function extractExpiryMs(url: string, defaultTtlMs = DEFAULT_CACHE_TTL_MS
 }
 
 export function setupCookiesFile(): string | null {
+  if (process.env.DISABLE_COOKIES === "true" || process.env.DISABLE_COOKIES === "1") {
+    return null;
+  }
   if (process.env.YOUTUBE_COOKIES && process.env.YOUTUBE_COOKIES.trim().length > 0) {
     const raw = process.env.YOUTUBE_COOKIES.trim();
     let content = raw;
@@ -188,9 +191,10 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
     console.warn("[Stream API] yt-dlp primary resolution failed:", detail.split("\n")[0]);
   }
 
-  // Percobaan 2: Fallback terarah (android_vr / web_embedded jika PAGE_RELOAD, atau lenient format)
+  // Percobaan 2: Fallback terarah tanpa cookies (mengisolasi stale cookie)
   try {
-    const fallbackArgs = [...baseArgs];
+    const cleanBaseArgs = baseArgs.filter((arg, i, arr) => arg !== "--cookies" && arr[i - 1] !== "--cookies");
+    const fallbackArgs = [...cleanBaseArgs];
     if (initialErrorType === "PAGE_RELOAD") {
       fallbackArgs.push(
         "--extractor-args",
@@ -203,7 +207,7 @@ export async function resolveViaYtDlp(videoId: string): Promise<string | null> {
     } else {
       fallbackArgs.push(
         "--extractor-args",
-        "youtube:player_client=android,ios,web_embedded",
+        "youtube:player_client=ios,android,web_embedded",
         "-f",
         "ba[ext=m4a]/ba[ext=mp4]/ba/b[ext=mp4]/b/best",
         "-g",

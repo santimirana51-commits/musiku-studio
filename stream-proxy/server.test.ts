@@ -12,6 +12,9 @@ const {
   classifyExtractionError,
   sanitizeLog,
   extractExpiryMs,
+  setupCookiesFile,
+  resetCookiesState,
+  getCookiesState,
 } = require("./server");
 
 describe("StreamProxy Module", () => {
@@ -135,6 +138,32 @@ describe("StreamProxy Module", () => {
       const url = "https://example.com/stream.mp4";
       const expiryMs = extractExpiryMs(url);
       expect(expiryMs).toBeGreaterThan(Date.now());
+    });
+  });
+
+  describe("Cookies Management & Isolation", () => {
+    it("returns null when DISABLE_COOKIES is set to true", () => {
+      const origEnv = process.env.DISABLE_COOKIES;
+      try {
+        process.env.DISABLE_COOKIES = "true";
+        resetCookiesState();
+        const cookies = setupCookiesFile(true);
+        expect(cookies).toBeNull();
+      } finally {
+        if (origEnv !== undefined) {
+          process.env.DISABLE_COOKIES = origEnv;
+        } else {
+          delete process.env.DISABLE_COOKIES;
+        }
+        resetCookiesState();
+      }
+    });
+
+    it("tracks cookies flagged state properly", () => {
+      resetCookiesState();
+      const state = getCookiesState();
+      expect(state.cookiesFlagged).toBe(false);
+      expect(state.consecutiveCookieFailures).toBe(0);
     });
   });
 });

@@ -96,10 +96,35 @@ function extractExpiryMs(url) {
   return Date.now() + CACHE_TTL_MS;
 }
 
+let cachedCookiesPath = undefined;
+let cookiesFlagged = false;
+let consecutiveCookieFailures = 0;
+const MAX_COOKIE_FAILURES = 2;
+
+function resetCookiesState() {
+  cookiesFlagged = false;
+  consecutiveCookieFailures = 0;
+  cachedCookiesPath = undefined;
+}
+
+function getCookiesState() {
+  return {
+    cookiesFlagged,
+    consecutiveCookieFailures,
+    cookiesPath: cachedCookiesPath,
+  };
+}
+
 /**
  * Menyiapkan file cookies jika disediakan via environment variable atau file lokal
  */
-function setupCookiesFile() {
+function setupCookiesFile(forceRefresh = false) {
+  if (process.env.DISABLE_COOKIES === "true" || process.env.DISABLE_COOKIES === "1") {
+    return null;
+  }
+  if (!forceRefresh && cachedCookiesPath !== undefined) {
+    return cachedCookiesPath;
+  }
   if (process.env.YOUTUBE_COOKIES && process.env.YOUTUBE_COOKIES.trim().length > 0) {
     const raw = process.env.YOUTUBE_COOKIES.trim();
     let content = raw;
@@ -114,6 +139,7 @@ function setupCookiesFile() {
     const targetPath = path.join(os.tmpdir(), "youtube_cookies.txt");
     try {
       fs.writeFileSync(targetPath, content, { encoding: "utf-8", mode: 0o600 });
+      cachedCookiesPath = targetPath;
       return targetPath;
     } catch (err) {
       console.warn("[StreamProxy] Gagal menulis YOUTUBE_COOKIES ke disk:", sanitizeLog(err.message));
@@ -122,6 +148,7 @@ function setupCookiesFile() {
 
   const customPath = process.env.YOUTUBE_COOKIES_PATH || process.env.COOKIES_FILE;
   if (customPath && fs.existsSync(customPath)) {
+    cachedCookiesPath = customPath;
     return customPath;
   }
 
@@ -133,11 +160,13 @@ function setupCookiesFile() {
   for (const candidate of localCandidates) {
     try {
       if (fs.existsSync(candidate) && fs.statSync(candidate).size > 0) {
+        cachedCookiesPath = candidate;
         return candidate;
       }
     } catch {}
   }
 
+  cachedCookiesPath = null;
   return null;
 }
 
@@ -266,15 +295,15 @@ async function resolveViaYtDlp(videoId) {
     "ejs:github",
   ];
 
-  if (cookiesPath) {
-    baseArgs.push("--cookies", cookiesPath);
-  }
+  // Gunakan cookies pada Attempt 1 hanya jika tersedia dan belum ditandai kadaluwarsa/bermasalah
+  const useCookiesInAttempt1 = Boolean(cookiesPath && !cookiesFlagged);
 
   // PERCOBAAN 1: Chain multi-client modern (visionos, android, web_embedded) + dump-single-json
   let initialErrorType = "NONE";
   try {
     const attempt1Args = [
       ...baseArgs,
+      ...(useCookiesInAttempt1 ? ["--cookies", cookiesPath] : []),
       "--extractor-args",
       "youtube:player_client=visionos,android,web_embedded",
       "--dump-single-json",
@@ -290,6 +319,9 @@ async function resolveViaYtDlp(videoId) {
     const selected = selectBestAudioFormat(parsed.formats);
 
     if (selected && selected.url) {
+      if (useCookiesInAttempt1) {
+        consecutiveCookieFailures = 0;
+      }
       return {
         url: selected.url,
         ext: selected.ext,
@@ -300,6 +332,16 @@ async function resolveViaYtDlp(videoId) {
     const detail = (err.stderr || err.stdout || err.message || "").trim();
     initialErrorType = classifyExtractionError(detail);
     const sanitizedMsg = sanitizeLog(detail.split("\n")[0] || detail);
+
+    if (useCookiesInAttempt1) {
+      consecutiveCookieFailures++;
+      if (consecutiveCookieFailures >= MAX_COOKIE_FAILURES) {
+        cookiesFlagged = true;
+        console.warn(
+          `[StreamProxy] Cookies terdeteksi kadaluwarsa/bermasalah (${consecutiveCookieFailures} kegagalan beruntun). Mengisolasi cookies secara otomatis untuk menghemat latensi request berikutnya.`
+        );
+      }
+    }
 
     lastFailureDiagnostics.set(videoId, {
       errorType: initialErrorType,
@@ -313,67 +355,91 @@ async function resolveViaYtDlp(videoId) {
     );
   }
 
-  // PERCOBAAN 2: Fallback terarah sesuai klasifikasi error (Jangan mengulang konfigurasi yang sama)
-  try {
-    const attempt2Args = [...baseArgs];
-
-    if (initialErrorType === "PAGE_RELOAD") {
-      // Jika terjadi tantangan web reload, gunakan client embedded & android vr murni yang tidak kena challenge reload
-      attempt2Args.push(
+  // PERCOBAAN 2: Jika Percobaan 1 menggunakan cookies dan gagal (terutama FORMAT_UNAVAILABLE / PAGE_RELOAD / BOT_CHECK),
+  // Coba ulang TANPA COOKIES! Pada lingkungan datacenter/cloud (seperti Railway), cookies yang kadaluwarsa
+  // atau IP yang tidak cocok justru menjadi penyebab YouTube menyembunyikan semua format audio!
+  if (useCookiesInAttempt1) {
+    try {
+      console.log(`[StreamProxy] Mencoba ulang ${videoId} TANPA cookies (isolasi stale cookie)...`);
+      const attemptNoCookiesArgs = [
+        ...baseArgs,
         "--extractor-args",
-        "youtube:player_client=android_vr,web_embedded",
+        "youtube:player_client=visionos,android,web_embedded",
         "--dump-single-json",
-        target
-      );
-      const { stdout } = await execFileAsync(binary, attempt2Args, {
-        timeout: 12000,
+        target,
+      ];
+      const { stdout } = await execFileAsync(binary, attemptNoCookiesArgs, {
+        timeout: 13000,
         maxBuffer: 15 * 1024 * 1024,
       });
       const parsed = JSON.parse(stdout);
       const selected = selectBestAudioFormat(parsed.formats);
       if (selected && selected.url) {
+        console.log(`[StreamProxy] Berhasil mengekstrak ${videoId} tanpa cookies (format: ${selected.formatId})`);
         return {
           url: selected.url,
           ext: selected.ext,
           formatId: selected.formatId,
         };
       }
-    } else {
-      // Jika format tidak tersedia atau error lainnya, gunakan format selection fleksibel dengan -g
-      attempt2Args.push(
+    } catch (err) {
+      const detail = (err.stderr || err.stdout || err.message || "").trim();
+      const sanitizedMsg = sanitizeLog(detail.split("\n")[0] || detail);
+      console.warn(`[StreamProxy] yt-dlp no-cookies attempt failed for ${videoId}:`, sanitizedMsg);
+    }
+  }
+
+  // PERCOBAAN 3: Fallback client terarah tanpa cookies
+  try {
+    const attempt3Args = [...baseArgs];
+
+    if (initialErrorType === "PAGE_RELOAD") {
+      // Jika terjadi tantangan web reload, gunakan client embedded & android vr murni yang tidak kena challenge reload
+      attempt3Args.push(
         "--extractor-args",
-        "youtube:player_client=android,ios,web_embedded",
+        "youtube:player_client=android_vr,web_embedded",
         "-f",
         "ba[ext=m4a]/ba[ext=mp4]/ba/b[ext=mp4]/b/best",
         "-g",
         target
       );
-      const { stdout } = await execFileAsync(binary, attempt2Args, {
-        timeout: 12000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
-      if (resolvedUrl && resolvedUrl.startsWith("http")) {
-        return {
-          url: resolvedUrl,
-          ext: resolvedUrl.includes("mime=audio%2Fwebm") ? "webm" : "m4a",
-          formatId: "fallback_g",
-        };
-      }
+    } else {
+      // Format fleksibel tanpa pembatasan client ketat
+      attempt3Args.push(
+        "--extractor-args",
+        "youtube:player_client=ios,android,web_embedded",
+        "-f",
+        "ba[ext=m4a]/ba[ext=mp4]/ba/b[ext=mp4]/b/best",
+        "-g",
+        target
+      );
+    }
+
+    const { stdout } = await execFileAsync(binary, attempt3Args, {
+      timeout: 12000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const resolvedUrl = stdout.trim().split("\n")[0]?.trim();
+    if (resolvedUrl && resolvedUrl.startsWith("http")) {
+      return {
+        url: resolvedUrl,
+        ext: resolvedUrl.includes("mime=audio%2Fwebm") ? "webm" : "m4a",
+        formatId: "fallback_g",
+      };
     }
   } catch (err) {
     const detail = (err.stderr || err.stdout || err.message || "").trim();
-    const secondErrorType = classifyExtractionError(detail);
+    const thirdErrorType = classifyExtractionError(detail);
     const sanitizedMsg = sanitizeLog(detail.split("\n")[0] || detail);
 
     lastFailureDiagnostics.set(videoId, {
-      errorType: secondErrorType,
+      errorType: thirdErrorType,
       reason: sanitizedMsg,
       timestamp: Date.now(),
     });
 
     console.warn(
-      `[StreamProxy] yt-dlp secondary fallback failed for ${videoId} [Type: ${secondErrorType}]:`,
+      `[StreamProxy] yt-dlp final fallback failed for ${videoId} [Type: ${thirdErrorType}]:`,
       sanitizedMsg
     );
   }
@@ -499,6 +565,7 @@ async function handleRequest(req, res) {
       ytVersion = stdout.trim();
     } catch {}
 
+    const cookiesInfo = setupCookiesFile();
     const payload = JSON.stringify({
       status: "ok",
       service: "musiku-stream-proxy",
@@ -506,6 +573,7 @@ async function handleRequest(req, res) {
       ytDlpVersion: ytVersion,
       nodeVersion: process.version,
       nodeRuntime: getNodeRuntime(),
+      cookiesStatus: cookiesFlagged ? "flagged_disabled" : (cookiesInfo ? "loaded" : "none"),
       cachedVideos: streamCache.size,
       uptimeSeconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
@@ -719,11 +787,15 @@ async function handleRequest(req, res) {
       }
     }
 
-    if (!conn || !conn.upstreamRes) {
+    if (!conn || !conn.upstreamRes || [403, 404, 410].includes(conn.upstreamRes.statusCode)) {
       if (isClientClosed) return;
       streamCache.delete(videoId);
-      const errPayload = JSON.stringify({ error: "Koneksi ke aliran audio upstream gagal atau timeout." });
-      res.writeHead(504, { "Content-Type": "application/json" });
+      const statusCode = conn?.upstreamRes?.statusCode || 504;
+      const errPayload = JSON.stringify({
+        error: "Koneksi ke aliran audio upstream gagal atau ditolak oleh server sumber.",
+        upstreamStatus: statusCode,
+      });
+      res.writeHead(502, { "Content-Type": "application/json" });
       res.end(errPayload);
       return;
     }
@@ -901,5 +973,8 @@ module.exports = {
   classifyExtractionError,
   sanitizeLog,
   extractExpiryMs,
+  setupCookiesFile,
+  resetCookiesState,
+  getCookiesState,
   handleRequest,
 };
