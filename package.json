@@ -12,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "android:sync": "npx cap sync android",
-    "build:all": "npm run build && npx cap sync android"
+    "windows:sync": "mkdir -p out && cp -r www/* out/",
+    "sync:all": "npm run android:sync && npm run windows:sync",
+    "build:all": "npm run build && npm run sync:all"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
